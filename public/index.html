@@ -1,0 +1,502 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Chariot Racing</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=IM+Fell+English:ital@0;1&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="css/main.css" />
+    <script crossorigin src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone@7.25.6/babel.min.js"></script>
+  </head>
+  <body>
+    <div id="root"></div>
+
+    <script type="text/babel" data-presets="react">
+      const { useEffect, useRef, useState } = React;
+
+      /* ------------------------------------------------------------------ *
+       * Seeded randomness. The raw seed only ever lives inside these        *
+       * closures — it is never written to the DOM and never logged.         *
+       * ------------------------------------------------------------------ */
+      function mulberry32(a) {
+        return function () {
+          a |= 0;
+          a = (a + 0x6d2b79f5) | 0;
+          let t = Math.imul(a ^ (a >>> 15), 1 | a);
+          t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+          return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+        };
+      }
+
+      async function seededRandom() {
+        const res = await fetch("api/?action=seed");
+        const data = await res.json();
+        const raw = atob(data.seed);
+        const bytes = new Uint8Array(raw.length);
+        for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+        // payload is (seed ^ key) || key — fold the recovered seed bytes down
+        // to one uint32 PRNG state via FNV-1a.
+        let h = 2166136261 >>> 0;
+        for (let i = 0; i < 8; i++) {
+          h = Math.imul(h ^ (bytes[i] ^ bytes[i + 8]), 16777619);
+        }
+        return mulberry32(h >>> 0);
+      }
+
+      function smoothstep(e0, e1, x) {
+        const t = Math.min(1, Math.max(0, (x - e0) / (e1 - e0)));
+        return t * t * (3 - 2 * t);
+      }
+
+      /* ------------------------------------------------------------------ *
+       * Theme: one palette shared between the stylesheet (CSS custom        *
+       * properties) and the canvas renderer.                                *
+       * ------------------------------------------------------------------ */
+      let THEME = null;
+      function theme() {
+        if (!THEME) {
+          const cs = getComputedStyle(document.documentElement);
+          function v(name, fallback) {
+            const val = cs.getPropertyValue(name).trim();
+            return val || fallback;
+          }
+          THEME = {
+            field: v("--field", "#14100c"),
+            track: v("--track", "#4c3a26"),
+            trackEdge: v("--track-edge", "#2a1f14"),
+            laneLine: v("--lane-line", "rgba(233, 200, 119, 0.22)"),
+            ink: v("--ink", "#f3e9d2"),
+            inkDim: v("--ink-dim", "#cbb98f"),
+            gold: v("--gold", "#c9a45c"),
+            goldBright: v("--gold-bright", "#e9c877"),
+            goldDim: v("--gold-dim", "#8a6d3b"),
+            blood: v("--blood", "#8c2f2f"),
+          };
+        }
+        return THEME;
+      }
+
+      /* ------------------------------------------------------------------ *
+       * Track: four nested loop lanes, each exactly one lap long. Movement  *
+       * is normalized per lane, so all four lanes race an equal distance.   *
+       * ------------------------------------------------------------------ */
+      function buildTrack(w, h) {
+        const availW = w - 110;
+        const availH = h - 180;
+        let laneW = Math.max(14, Math.min(44, availH * 0.085));
+        let r0 = laneW * 1.8;
+        let rOut = r0 + 3 * laneW;
+        let straight = availW - 2 * rOut - laneW;
+        if (straight < 120) {
+          laneW = Math.max(10, (availW - 130) / 8);
+          r0 = laneW * 1.8;
+          rOut = r0 + 3 * laneW;
+          straight = Math.max(80, availW - 2 * rOut - laneW);
+        }
+        const half = straight / 2;
+        const lanes = [];
+        for (let i = 0; i < 4; i++) {
+          const R = r0 + i * laneW;
+          lanes.push({ R: R, half: half, len: 2 * straight + 2 * Math.PI * R });
+        }
+        return {
+          cx: w / 2,
+          cy: h / 2 + 24,
+          laneW: laneW,
+          r0: r0,
+          rOut: rOut,
+          half: half,
+          lanes: lanes,
+        };
+      }
+
+      function lanePose(tr, i, u) {
+        const lane = tr.lanes[i];
+        const R = lane.R;
+        const half = lane.half;
+        const len = lane.len;
+        let d = (u * len) % len;
+        if (d < 0) d += len;
+        const straight = 2 * half;
+        const cap = Math.PI * R;
+        const cx = tr.cx;
+        const cy = tr.cy;
+        if (d < straight) return { x: cx - half + d, y: cy - R, a: 0 };
+        d -= straight;
+        if (d < cap) {
+          const th = -Math.PI / 2 + d / R;
+          return {
+            x: cx + half + R * Math.cos(th),
+            y: cy + R * Math.sin(th),
+            a: th + Math.PI / 2,
+          };
+        }
+        d -= cap;
+        if (d < straight) return { x: cx + half - d, y: cy + R, a: Math.PI };
+        d -= straight;
+        const th2 = Math.PI / 2 + d / R;
+        return {
+          x: cx - half + R * Math.cos(th2),
+          y: cy + R * Math.sin(th2),
+          a: th2 + Math.PI / 2,
+        };
+      }
+
+      function stadiumPath(tr, R) {
+        const cx = tr.cx;
+        const cy = tr.cy;
+        const half = tr.half;
+        const p = new Path2D();
+        p.moveTo(cx - half, cy - R);
+        p.lineTo(cx + half, cy - R);
+        p.arc(cx + half, cy, R, -Math.PI / 2, Math.PI / 2);
+        p.lineTo(cx - half, cy + R);
+        p.arc(cx - half, cy, R, Math.PI / 2, (3 * Math.PI) / 2);
+        p.closePath();
+        return p;
+      }
+
+      /* --------------------------- Racers (SVG shapes) -------------------- */
+      const RACERS = [
+        { name: "Red",   color: "#b3342f", path: "M 13 0 L -10 9 L -5 0 L -10 -9 Z" },
+        { name: "Blue",  color: "#3a6ea5", path: "M -9 -9 H 9 V 9 H -9 Z" },
+        { name: "Green", color: "#4c7a3f", path: "M 0 -10 A 10 10 0 1 1 0 10 A 10 10 0 1 1 0 -10 Z" },
+        { name: "Gold",  color: "#c9a45c", path: "M 13 0 L 0 10 L -13 0 L 0 -10 Z" },
+      ];
+      const SHAPES = RACERS.map(function (r) { return new Path2D(r.path); });
+      const ORDINAL = ["1st", "2nd", "3rd", "4th"];
+
+      /* --------------------------- Race simulation ------------------------ *
+       * A fixed 60 Hz step keeps each race deterministic for its seed:       *
+       * surges and fades trade the lead back and forth, then the endgame     *
+       * separates the field into the seeded order 1st → 4th.                 *
+       * ------------------------------------------------------------------- */
+      const STEP = 1 / 60;
+      const BASE_SPEED = 0.12; // laps per second
+
+      function createRace(rand) {
+        const order = [0, 1, 2, 3];
+        for (let i = 3; i > 0; i--) {
+          const j = Math.floor(rand() * (i + 1));
+          const tmp = order[i];
+          order[i] = order[j];
+          order[j] = tmp;
+        }
+        const racers = [0, 1, 2, 3].map(function (lane) {
+          return {
+            lane: lane,
+            rank: order.indexOf(lane), // 0 = seeded winner
+            p: -0.012,
+            done: false,
+            place: 0,
+            surgeAmp: 0.1 + rand() * 0.12,
+            surgeW: 1.2 + rand() * 1.2,
+            surgePhase: rand() * Math.PI * 2,
+          };
+        });
+        return { rand: rand, t: 0, finished: 0, racers: racers, placements: [] };
+      }
+
+      function stepRace(race) {
+        const rand = race.rand;
+        const racers = race.racers;
+        race.t += STEP;
+        let maxP = -1;
+        for (let i = 0; i < racers.length; i++) {
+          if (!racers[i].done && racers[i].p > maxP) maxP = racers[i].p;
+        }
+        const endgame = smoothstep(0.55, 0.9, Math.max(0, maxP));
+        for (let i = 0; i < racers.length; i++) {
+          const rc = racers[i];
+          if (rc.done) continue;
+          const gap = maxP - rc.p;
+          const surge = rc.surgeAmp * Math.sin(rc.surgePhase + race.t * rc.surgeW);
+          const jitter = (rand() - 0.5) * 0.05;
+          // rubber banding: stragglers surge, the leader is reined in — but
+          // only mid-race; the endgame lets raw rank strength decide.
+          const band = (gap - 0.015) * 3 * (1 - endgame);
+          const strength = 1 + (1.5 - rc.rank) * 0.06 * (0.25 + 2.5 * endgame);
+          const v = BASE_SPEED * strength * (1 + surge + jitter + band);
+          rc.p += Math.max(0.03, v) * STEP;
+          if (rc.p >= 1) {
+            const blocked = racers.some(function (o) { return !o.done && o.rank < rc.rank; });
+            if (blocked) {
+              rc.p = 0.994; // hold the line until the seeded order is clear
+            } else {
+              rc.done = true;
+              race.finished += 1;
+              rc.place = race.finished;
+              race.placements.push(rc);
+            }
+          }
+        }
+      }
+
+      /* ------------------------------- Render ----------------------------- */
+      function roundRect(ctx, x, y, w, h, r) {
+        ctx.beginPath();
+        ctx.moveTo(x + r, y);
+        ctx.arcTo(x + w, y, x + w, y + h, r);
+        ctx.arcTo(x + w, y + h, x, y + h, r);
+        ctx.arcTo(x, y + h, x, y, r);
+        ctx.arcTo(x, y, x + w, y, r);
+        ctx.closePath();
+      }
+
+      function parchmentCard(ctx, x, y, w, h) {
+        const T = theme();
+        ctx.save();
+        ctx.fillStyle = "rgba(0, 0, 0, 0.45)";
+        roundRect(ctx, x + 4, y + 6, w, h, 8);
+        ctx.fill();
+        const g = ctx.createLinearGradient(x, y, x, y + h);
+        g.addColorStop(0, "#efe2bd");
+        g.addColorStop(1, "#d9c391");
+        ctx.fillStyle = g;
+        roundRect(ctx, x, y, w, h, 8);
+        ctx.fill();
+        ctx.strokeStyle = T.goldDim;
+        ctx.lineWidth = 2;
+        roundRect(ctx, x, y, w, h, 8);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      const IDLE = {
+        t: 0,
+        finished: 0,
+        placements: [],
+        racers: [0, 1, 2, 3].map(function (lane) {
+          return { lane: lane, p: -0.012, done: false, place: 0 };
+        }),
+      };
+
+      function draw(ctx, w, h, tr, race) {
+        const T = theme();
+        const state = race || IDLE;
+
+        // torch-lit field
+        const bg = ctx.createRadialGradient(
+          w / 2, h * 0.42, Math.min(w, h) * 0.1,
+          w / 2, h * 0.5, Math.max(w, h) * 0.75
+        );
+        bg.addColorStop(0, "#241a12");
+        bg.addColorStop(0.6, T.field);
+        bg.addColorStop(1, "#0b0806");
+        ctx.fillStyle = bg;
+        ctx.fillRect(0, 0, w, h);
+
+        // title
+        ctx.textAlign = "center";
+        const tg = ctx.createLinearGradient(0, 22, 0, 58);
+        tg.addColorStop(0, T.goldBright);
+        tg.addColorStop(1, T.goldDim);
+        ctx.fillStyle = tg;
+        ctx.font = "700 30px Cinzel, Georgia, serif";
+        ctx.fillText("CHARIOT RACING", w / 2, 52);
+        ctx.fillStyle = T.inkDim;
+        ctx.font = "italic 15px 'IM Fell English', Georgia, serif";
+        ctx.fillText("a contest of speed, cunning and the favour of the gods", w / 2, 76);
+
+        const rin = tr.r0 - tr.laneW / 2;
+        const rout = tr.rOut + tr.laneW / 2;
+        const mid = (rin + rout) / 2;
+
+        // track bed with stone edging
+        ctx.strokeStyle = T.trackEdge;
+        ctx.lineWidth = rout - rin + 10;
+        ctx.stroke(stadiumPath(tr, mid));
+        ctx.strokeStyle = T.track;
+        ctx.lineWidth = rout - rin;
+        ctx.stroke(stadiumPath(tr, mid));
+
+        // lane dividers
+        ctx.strokeStyle = T.laneLine;
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([8, 6]);
+        for (let k = 0; k <= 4; k++) {
+          ctx.stroke(stadiumPath(tr, rin + k * tr.laneW));
+        }
+        ctx.setLineDash([]);
+
+        // checkered start/finish strip (parchment & blood)
+        const fx = tr.cx - tr.half;
+        const cell = 5;
+        const fy0 = tr.cy - rout;
+        const fy1 = tr.cy - rin;
+        for (let y = fy0, row = 0; y < fy1; y += cell, row++) {
+          for (let col = 0; col < 2; col++) {
+            ctx.fillStyle = (row + col) % 2 === 0 ? "#efe2bd" : T.blood;
+            ctx.fillRect(fx - 5 + col * cell, y, cell, cell);
+          }
+        }
+
+        // racers
+        state.racers.forEach(function (rc) {
+          const pose = lanePose(tr, rc.lane, rc.p);
+          ctx.save();
+          ctx.translate(pose.x, pose.y);
+          ctx.rotate(pose.a);
+          ctx.shadowColor = "rgba(0, 0, 0, 0.6)";
+          ctx.shadowBlur = 6;
+          ctx.shadowOffsetY = 2;
+          ctx.fillStyle = RACERS[rc.lane].color;
+          ctx.fill(SHAPES[rc.lane]);
+          ctx.restore();
+          if (rc.done) {
+            ctx.fillStyle = T.goldBright;
+            ctx.font = "700 14px Cinzel, Georgia, serif";
+            ctx.textAlign = "center";
+            ctx.fillText(ORDINAL[rc.place - 1], pose.x, pose.y - 18);
+          }
+        });
+
+        // torchlight vignette
+        const vg = ctx.createRadialGradient(
+          w / 2, h / 2, Math.min(w, h) * 0.35,
+          w / 2, h / 2, Math.max(w, h) * 0.75
+        );
+        vg.addColorStop(0, "rgba(0, 0, 0, 0)");
+        vg.addColorStop(1, "rgba(0, 0, 0, 0.55)");
+        ctx.fillStyle = vg;
+        ctx.fillRect(0, 0, w, h);
+
+        // standings — a small parchment scroll
+        const sx = w - 262;
+        const sy = 96;
+        const sw = 238;
+        const sh = 58 + state.placements.length * 30;
+        parchmentCard(ctx, sx, sy, sw, sh);
+        ctx.textAlign = "left";
+        ctx.fillStyle = "#6d2d22";
+        ctx.font = "700 15px Cinzel, Georgia, serif";
+        ctx.fillText("STANDINGS", sx + 22, sy + 28);
+        if (state.placements.length === 0) {
+          ctx.fillStyle = "#5c4a30";
+          ctx.font = "italic 14px 'IM Fell English', Georgia, serif";
+          ctx.fillText("awaiting the trumpet…", sx + 22, sy + 52);
+        }
+        state.placements.forEach(function (rc, i) {
+          const rowY = sy + 52 + i * 30;
+          ctx.save();
+          ctx.translate(sx + 28, rowY - 4);
+          ctx.scale(0.5, 0.5);
+          ctx.fillStyle = RACERS[rc.lane].color;
+          ctx.fill(SHAPES[rc.lane]);
+          ctx.restore();
+          ctx.fillStyle = "#3b2a16";
+          ctx.font = "14px 'IM Fell English', Georgia, serif";
+          ctx.fillText(ORDINAL[i] + "   " + RACERS[rc.lane].name, sx + 46, rowY);
+        });
+
+        // legend shields
+        ctx.textAlign = "left";
+        RACERS.forEach(function (r, i) {
+          const gx = 34 + i * 96;
+          const gy = h - 34;
+          ctx.save();
+          ctx.translate(gx, gy);
+          ctx.scale(0.5, 0.5);
+          ctx.fillStyle = r.color;
+          ctx.fill(SHAPES[i]);
+          ctx.restore();
+          ctx.fillStyle = T.inkDim;
+          ctx.font = "14px 'IM Fell English', Georgia, serif";
+          ctx.fillText(r.name, gx + 16, gy + 5);
+        });
+      }
+
+      /* --------------------------------- App ------------------------------ */
+      function App() {
+        const canvasRef = useRef(null);
+        const raceRef = useRef(null);
+        const trackRef = useRef(null);
+        const [phase, setPhase] = useState("idle");
+        const [label, setLabel] = useState("Start the races");
+
+        useEffect(function () {
+          const canvas = canvasRef.current;
+          const ctx = canvas.getContext("2d");
+          function resize() {
+            const dpr = window.devicePixelRatio || 1;
+            const w = window.innerWidth;
+            const h = window.innerHeight;
+            canvas.width = w * dpr;
+            canvas.height = h * dpr;
+            canvas.style.width = w + "px";
+            canvas.style.height = h + "px";
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            trackRef.current = buildTrack(w, h);
+            draw(ctx, w, h, trackRef.current, raceRef.current);
+          }
+          window.addEventListener("resize", resize);
+          resize();
+          // repaint once the medieval faces arrive
+          if (document.fonts && document.fonts.ready) {
+            document.fonts.ready.then(function () {
+              draw(ctx, window.innerWidth, window.innerHeight, trackRef.current, raceRef.current);
+            });
+          }
+          return function () { window.removeEventListener("resize", resize); };
+        }, []);
+
+        function startRace() {
+          if (phase === "racing") return;
+          setPhase("racing");
+          setLabel("Racing…");
+
+          seededRandom()
+            .catch(function () {
+              return mulberry32((Date.now() ^ Math.floor(Math.random() * 4294967295)) >>> 0);
+            })
+            .then(function (rand) {
+              raceRef.current = createRace(rand);
+              const canvas = canvasRef.current;
+              const ctx = canvas.getContext("2d");
+              let acc = 0;
+              let last = performance.now();
+
+              function loop(now) {
+                const race = raceRef.current;
+                acc += Math.min(0.1, (now - last) / 1000);
+                last = now;
+                while (acc >= STEP && race.finished < 4) {
+                  stepRace(race);
+                  acc -= STEP;
+                }
+                draw(ctx, window.innerWidth, window.innerHeight, trackRef.current, race);
+                if (race.finished < 4) {
+                  requestAnimationFrame(loop);
+                } else {
+                  setPhase("done");
+                  setLabel("Race again");
+                }
+              }
+              requestAnimationFrame(loop);
+            });
+        }
+
+        return (
+          <React.Fragment>
+            <canvas id="game" ref={canvasRef} />
+            <div className="top">
+              <button onClick={startRace} disabled={phase === "racing"}>
+                {label}
+              </button>
+            </div>
+            <div className="frame" />
+          </React.Fragment>
+        );
+      }
+
+      ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+    </script>
+  </body>
+</html>
