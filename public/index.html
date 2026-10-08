@@ -413,8 +413,13 @@
         });
       }
 
-      /* --------------------------------- App ------------------------------ */
-      function App() {
+      /* ------------------------------ Race view --------------------------- *
+       * The canvas hall of the hippodrome. Drives practice races today and    *
+       * shared room races once the backend rooms arise.                       *
+       * ------------------------------------------------------------------- */
+      function RaceView(props) {
+        const aliveRef = useRef(true);
+        const rafRef = useRef(0);
         const canvasRef = useRef(null);
         const raceRef = useRef(null);
         const trackRef = useRef(null);
@@ -444,7 +449,11 @@
               draw(ctx, window.innerWidth, window.innerHeight, trackRef.current, raceRef.current);
             });
           }
-          return function () { window.removeEventListener("resize", resize); };
+          return function () {
+            aliveRef.current = false;
+            cancelAnimationFrame(rafRef.current);
+            window.removeEventListener("resize", resize);
+          };
         }, []);
 
         function startRace() {
@@ -464,6 +473,7 @@
               let last = performance.now();
 
               function loop(now) {
+                if (!aliveRef.current) return;
                 const race = raceRef.current;
                 acc += Math.min(0.1, (now - last) / 1000);
                 last = now;
@@ -473,13 +483,13 @@
                 }
                 draw(ctx, window.innerWidth, window.innerHeight, trackRef.current, race);
                 if (race.finished < 4) {
-                  requestAnimationFrame(loop);
+                  rafRef.current = requestAnimationFrame(loop);
                 } else {
                   setPhase("done");
                   setLabel("Race again");
                 }
               }
-              requestAnimationFrame(loop);
+              rafRef.current = requestAnimationFrame(loop);
             });
         }
 
@@ -491,6 +501,410 @@
                 {label}
               </button>
             </div>
+            <a
+              className="gate-link"
+              href="/"
+              onClick={function (e) {
+                e.preventDefault();
+                props.navigate("/");
+              }}
+            >
+              ◂ The Gates
+            </a>
+          </React.Fragment>
+        );
+      }
+
+      /* ------------------------- Shared client helpers -------------------- */
+      /* Tiny JSON POST helper for the PHP action router.                    */
+      async function api(action, body) {
+        const res = await fetch("api/?action=" + action, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body || {}),
+        });
+        let data = null;
+        try {
+          data = await res.json();
+        } catch (e) {
+          data = null;
+        }
+        if (!res.ok) {
+          const raw = data && data.error;
+          const message =
+            raw && raw.message
+              ? raw.message
+              : raw
+              ? String(raw)
+              : "The sages return no answer (" + res.status + ")";
+          const err = new Error(message);
+          if (raw && raw.code) err.code = raw.code;
+          throw err;
+        }
+        return data;
+      }
+
+      /* Accepts a bare room mark or a pasted room link.                     */
+      function extractRoomId(raw) {
+        const s = (raw || "").trim();
+        const m = s.match(/room=([A-Za-z0-9]+)/);
+        if (m) return m[1];
+        return s.replace(/^.*[\/#]/, "").trim();
+      }
+
+      /* Word-names for the heralds to cry — rolled with the dice button.     */
+      const NAME_A = [
+        "Swift", "Grim", "Golden", "Iron", "Silent", "Wild", "Bold", "Fierce",
+        "Proud", "Stormbound", "Ember", "Dusky", "Noble", "Cunning", "Valiant", "Shadow",
+      ];
+      const NAME_B = [
+        "Badger", "Quill", "Falcon", "Stag", "Raven", "Fox", "Boar", "Hound",
+        "Wyvern", "Gryphon", "Hart", "Adder", "Otter", "Crow", "Wolf", "Mare",
+      ];
+      function wordName() {
+        return (
+          NAME_A[Math.floor(Math.random() * NAME_A.length)] +
+          " " +
+          NAME_B[Math.floor(Math.random() * NAME_B.length)]
+        );
+      }
+
+      /* ------------------------------- Routing ----------------------------- *
+       * Views follow the query string:                                      *
+       *   /                    → the gates (landing)                        *
+       *   /?room=<32-hex>      → the join gate (nickname & dice)            *
+       *   /?practice=<id>      → the hippodrome (practice race)             *
+       * Anything else turns to dust.                                        *
+       * ------------------------------------------------------------------- */
+      function parseRoute() {
+        const q = new URLSearchParams(window.location.search);
+        const room = (q.get("room") || "").trim();
+        const practice = (q.get("practice") || "").trim();
+        if (room && practice) return { name: "dust" };
+        if (room) {
+          return /^[0-9a-fA-F]{32}$/.test(room)
+            ? { name: "join", roomId: room.toLowerCase() }
+            : { name: "dust" };
+        }
+        if (practice) return { name: "practice" };
+        return { name: "landing" };
+      }
+
+      /* ------------------------------- Landing ----------------------------- */
+      function Landing(props) {
+        const [panel, setPanel] = useState("menu"); // menu | create | join
+        const [racers, setRacers] = useState(4);
+        const [souls, setSouls] = useState(8);
+        const [code, setCode] = useState("");
+        const [notice, setNotice] = useState("");
+        const [busy, setBusy] = useState(false);
+
+        function enterKey(fn) {
+          return function (e) {
+            if (e.key === "Enter") fn();
+          };
+        }
+
+        function backToMenu(e) {
+          e.preventDefault();
+          setPanel("menu");
+          setNotice("");
+        }
+
+        function forgeRoom() {
+          setBusy(true);
+          setNotice("");
+          api("create_room", {
+            maxRacers: racers,
+            maxJoiners: Math.max(racers, souls),
+          })
+            .then(function (data) {
+              setBusy(false);
+              localStorage.setItem("chariot.host." + data.roomId, data.hostToken);
+              props.navigate("/?room=" + data.roomId);
+            })
+            .catch(function (err) {
+              setBusy(false);
+              setNotice(err.message);
+            });
+        }
+
+        function seekRoom() {
+          const id = extractRoomId(code);
+          if (!id) {
+            setNotice("Inscribe a room mark first.");
+            return;
+          }
+          props.navigate("/?room=" + encodeURIComponent(id));
+        }
+
+        function practice() {
+          props.navigate("/?practice=" + Date.now().toString(36));
+        }
+
+        let body;
+        if (panel === "create") {
+          body = (
+            <React.Fragment>
+              <h1>Forge a Room</h1>
+              <p className="tagline">thou shalt be host of the hippodrome</p>
+              <div className="field">
+                <div className="rowline">
+                  <label>Chariots upon the track</label>
+                  <span className="tally">{racers}</span>
+                </div>
+                <input
+                  type="range"
+                  min="2"
+                  max="8"
+                  value={racers}
+                  onChange={function (e) {
+                    setRacers(parseInt(e.target.value, 10));
+                  }}
+                />
+              </div>
+              <div className="field">
+                <div className="rowline">
+                  <label>Souls who may enter</label>
+                  <span className="tally">{Math.max(racers, souls)}</span>
+                </div>
+                <input
+                  type="number"
+                  min="2"
+                  max="16"
+                  value={souls}
+                  onChange={function (e) {
+                    setSouls(parseInt(e.target.value, 10) || 0);
+                  }}
+                  onKeyDown={enterKey(forgeRoom)}
+                />
+              </div>
+              {notice ? <p className="notice">{notice}</p> : null}
+              <div className="menu">
+                <button onClick={forgeRoom} disabled={busy}>
+                  {busy ? "Summoning…" : "Forge the Room"}
+                </button>
+                <a className="linkish" href="/" onClick={backToMenu}>
+                  ◂ The Gates
+                </a>
+              </div>
+            </React.Fragment>
+          );
+        } else if (panel === "join") {
+          body = (
+            <React.Fragment>
+              <h1>Seek a Room</h1>
+              <p className="tagline">inscribe the room's mark, or its full scroll-link</p>
+              <div className="field">
+                <label>Room mark</label>
+                <input
+                  type="text"
+                  placeholder="thirty-two runes of hex"
+                  value={code}
+                  onChange={function (e) {
+                    setCode(e.target.value);
+                  }}
+                  onKeyDown={enterKey(seekRoom)}
+                />
+              </div>
+              {notice ? <p className="notice">{notice}</p> : null}
+              <div className="menu">
+                <button onClick={seekRoom}>Seek the Room</button>
+                <a className="linkish" href="/" onClick={backToMenu}>
+                  ◂ The Gates
+                </a>
+              </div>
+            </React.Fragment>
+          );
+        } else {
+          body = (
+            <React.Fragment>
+              <h1>CHARIOT RACING</h1>
+              <p className="tagline">
+                a contest of speed, cunning and the favour of the gods
+              </p>
+              <div className="menu">
+                <button onClick={function () { setPanel("create"); }}>
+                  Create a Room
+                </button>
+                <button onClick={function () { setPanel("join"); }}>
+                  Join a Room
+                </button>
+                <button onClick={practice}>Practice</button>
+              </div>
+            </React.Fragment>
+          );
+        }
+
+        return <div className="stage"><div className="card">{body}</div></div>;
+      }
+
+      /* ------------------------------ Join gate ---------------------------- *
+       * Shown at /?room=<id> before entering: a name for the heralds, rolled *
+       * afresh with the dice. Once join_room answers, Stage 3 lifts the       *
+       * lobby here.                                                          *
+       * ------------------------------------------------------------------- */
+      function JoinGate(props) {
+        const [nickname, setNickname] = useState(wordName);
+        const [busy, setBusy] = useState(false);
+        const [notice, setNotice] = useState("");
+        const [lost, setLost] = useState(false);
+        const [joined, setJoined] = useState(false);
+
+        if (lost) return <DustScroll navigate={props.navigate} />;
+
+        function home(e) {
+          e.preventDefault();
+          props.navigate("/");
+        }
+
+        function roll() {
+          setNickname(wordName());
+        }
+
+        function join() {
+          const name = nickname.trim();
+          if (!name) {
+            setNotice("The heralds need a name to cry.");
+            return;
+          }
+          setBusy(true);
+          setNotice("");
+          api("join_room", { roomId: props.roomId, nickname: name })
+            .then(function (data) {
+              setBusy(false);
+              setJoined(true);
+              localStorage.setItem(
+                "chariot.player." + props.roomId,
+                JSON.stringify(data)
+              );
+            })
+            .catch(function (err) {
+              setBusy(false);
+              if (err.code === "room_not_found") {
+                setLost(true);
+                return;
+              }
+              setNotice(err.message);
+            });
+        }
+
+        if (joined) {
+          // Stage 3 replaces this with the lobby (roster & share panel).
+          return (
+            <div className="stage">
+              <div className="card">
+                <h1>Thou Art Inscribed</h1>
+                <p className="tagline">the heralds shall cry thy name — {nickname}</p>
+                <div className="menu">
+                  <a className="linkish" href="/" onClick={home}>
+                    ◂ The Gates
+                  </a>
+                </div>
+              </div>
+            </div>
+          );
+        }
+
+        return (
+          <div className="stage">
+            <div className="card">
+              <h1>Enter the Hippodrome</h1>
+              <p className="mark">{props.roomId}</p>
+              <div className="field">
+                <label>What name shall the heralds cry?</label>
+                <div className="name-row">
+                  <input
+                    type="text"
+                    maxLength="24"
+                    value={nickname}
+                    onChange={function (e) {
+                      setNickname(e.target.value);
+                    }}
+                    onKeyDown={function (e) {
+                      if (e.key === "Enter") join();
+                    }}
+                  />
+                  <button
+                    className="dice"
+                    onClick={roll}
+                    title="Roll a new name"
+                    aria-label="Roll a new name"
+                  >
+                    ⚄
+                  </button>
+                </div>
+              </div>
+              {notice ? <p className="notice">{notice}</p> : null}
+              <div className="menu">
+                <button onClick={join} disabled={busy}>
+                  {busy ? "Seeking…" : "Join the Race"}
+                </button>
+                <a className="linkish" href="/" onClick={home}>
+                  ◂ The Gates
+                </a>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      /* ---------------------------- The dust scroll ------------------------ */
+      function DustScroll(props) {
+        return (
+          <div className="stage">
+            <div className="card dust">
+              <h1>
+                This Scroll
+                <br />
+                Hath Turned to Dust
+              </h1>
+              <p className="tagline">
+                the room you seek hath expired, or never was wrought at all
+              </p>
+              <div className="menu">
+                <button onClick={function () { props.navigate("/"); }}>
+                  Return to the Gates
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      /* --------------------------------- App ------------------------------ */
+      function App() {
+        const [route, setRoute] = useState(parseRoute);
+
+        useEffect(function () {
+          function onPop() {
+            setRoute(parseRoute());
+          }
+          window.addEventListener("popstate", onPop);
+          return function () {
+            window.removeEventListener("popstate", onPop);
+          };
+        }, []);
+
+        function navigate(to) {
+          window.history.pushState({}, "", to);
+          setRoute(parseRoute());
+        }
+
+        let view;
+        if (route.name === "practice") {
+          view = <RaceView navigate={navigate} />;
+        } else if (route.name === "join") {
+          view = <JoinGate roomId={route.roomId} navigate={navigate} />;
+        } else if (route.name === "dust") {
+          view = <DustScroll navigate={navigate} />;
+        } else {
+          view = <Landing navigate={navigate} />;
+        }
+
+        return (
+          <React.Fragment>
+            {view}
             <div className="frame" />
           </React.Fragment>
         );
