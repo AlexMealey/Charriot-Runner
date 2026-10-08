@@ -4,3 +4,8 @@ services:
     ports:
       - "1227:80"
     restart: unless-stopped
+    volumes:
+      - race-data:/var/www/html/data
+
+volumes:
+  race-data:

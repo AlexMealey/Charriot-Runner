@@ -1,6 +1,6 @@
 # Stage 1 — Backend race engine + practice slice
 
-Status: in progress — 1.1–1.3 done, 1.4–1.9 to go
+Status: steps 1.1–1.9 complete — acceptance pending a runtime pass
 Goal: the race simulation lives in PHP; practice races run on polled backend state.
 
 Progress (see steps below; checked = done and reviewed):
@@ -8,12 +8,12 @@ Progress (see steps below; checked = done and reviewed):
 - [x] 1.1 PHP PRNG (port of `mulberry32`)
 - [x] 1.2 `RaceEngine::create`
 - [x] 1.3 `RaceEngine::step`
-- [ ] 1.4 `RaceEngine::advance` + `RaceEngine::names`
-- [ ] 1.5 `RoomStore` (practice only for now)
-- [ ] 1.6 API actions
-- [ ] 1.7 Frontend: practice polls the backend
-- [ ] 1.8 N racers everywhere
-- [ ] 1.9 Practice count picker
+- [x] 1.4 `RaceEngine::advance` + `RaceEngine::names`
+- [x] 1.5 `RoomStore` (practice only for now)
+- [x] 1.6 API actions
+- [x] 1.7 Frontend: practice polls the backend
+- [x] 1.8 N racers everywhere
+- [x] 1.9 Practice count picker
 
 Files in play (touch nothing else):
 

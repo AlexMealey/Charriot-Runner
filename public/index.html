@@ -87,22 +87,23 @@
        * Track: four nested loop lanes, each exactly one lap long. Movement  *
        * is normalized per lane, so all four lanes race an equal distance.   *
        * ------------------------------------------------------------------ */
-      function buildTrack(w, h) {
+      function buildTrack(w, h, n) {
+        n = n || 4;
         const availW = w - 110;
         const availH = h - 180;
         let laneW = Math.max(14, Math.min(44, availH * 0.085));
         let r0 = laneW * 1.8;
-        let rOut = r0 + 3 * laneW;
+        let rOut = r0 + (n - 1) * laneW;
         let straight = availW - 2 * rOut - laneW;
         if (straight < 120) {
-          laneW = Math.max(10, (availW - 130) / 8);
+          laneW = Math.max(10, (availW - 130) / (2 * n));
           r0 = laneW * 1.8;
-          rOut = r0 + 3 * laneW;
+          rOut = r0 + (n - 1) * laneW;
           straight = Math.max(80, availW - 2 * rOut - laneW);
         }
         const half = straight / 2;
         const lanes = [];
-        for (let i = 0; i < 4; i++) {
+        for (let i = 0; i < n; i++) {
           const R = r0 + i * laneW;
           lanes.push({ R: R, half: half, len: 2 * straight + 2 * Math.PI * R });
         }
@@ -165,13 +166,17 @@
 
       /* --------------------------- Racers (SVG shapes) -------------------- */
       const RACERS = [
-        { name: "Red",   color: "#b3342f", path: "M 13 0 L -10 9 L -5 0 L -10 -9 Z" },
-        { name: "Blue",  color: "#3a6ea5", path: "M -9 -9 H 9 V 9 H -9 Z" },
-        { name: "Green", color: "#4c7a3f", path: "M 0 -10 A 10 10 0 1 1 0 10 A 10 10 0 1 1 0 -10 Z" },
-        { name: "Gold",  color: "#c9a45c", path: "M 13 0 L 0 10 L -13 0 L 0 -10 Z" },
+        { name: "Red",    color: "#b3342f", path: "M 13 0 L -10 9 L -5 0 L -10 -9 Z" },
+        { name: "Blue",   color: "#3a6ea5", path: "M -9 -9 H 9 V 9 H -9 Z" },
+        { name: "Green",  color: "#4c7a3f", path: "M 0 -10 A 10 10 0 1 1 0 10 A 10 10 0 1 1 0 -10 Z" },
+        { name: "Gold",   color: "#c9a45c", path: "M 13 0 L 0 10 L -13 0 L 0 -10 Z" },
+        { name: "Violet", color: "#7a4a8f", path: "M 13 0 L -10 9 L -5 0 L -10 -9 Z" },
+        { name: "Ember",  color: "#d9772e", path: "M -9 -9 H 9 V 9 H -9 Z" },
+        { name: "Teal",   color: "#2f7f7a", path: "M 0 -10 A 10 10 0 1 1 0 10 A 10 10 0 1 1 0 -10 Z" },
+        { name: "Silver", color: "#b9bec6", path: "M 13 0 L 0 10 L -13 0 L 0 -10 Z" },
       ];
       const SHAPES = RACERS.map(function (r) { return new Path2D(r.path); });
-      const ORDINAL = ["1st", "2nd", "3rd", "4th"];
+      const ORDINAL = ["1st", "2nd", "3rd", "4th", "5th", "6th", "7th", "8th"];
 
       /* --------------------------- Race simulation ------------------------ *
        * A fixed 60 Hz step keeps each race deterministic for its seed:       *
@@ -270,6 +275,7 @@
       }
 
       const IDLE = {
+        n: 4,
         t: 0,
         finished: 0,
         placements: [],
@@ -281,6 +287,7 @@
       function draw(ctx, w, h, tr, race) {
         const T = theme();
         const state = race || IDLE;
+        const n = state.n || 4;
 
         // torch-lit field
         const bg = ctx.createRadialGradient(
@@ -321,7 +328,7 @@
         ctx.strokeStyle = T.laneLine;
         ctx.lineWidth = 1.5;
         ctx.setLineDash([8, 6]);
-        for (let k = 0; k <= 4; k++) {
+        for (let k = 0; k <= n; k++) {
           ctx.stroke(stadiumPath(tr, rin + k * tr.laneW));
         }
         ctx.setLineDash([]);
@@ -398,7 +405,7 @@
 
         // legend shields
         ctx.textAlign = "left";
-        RACERS.forEach(function (r, i) {
+        RACERS.slice(0, n).forEach(function (r, i) {
           const gx = 34 + i * 96;
           const gy = h - 34;
           ctx.save();
@@ -420,11 +427,20 @@
       function RaceView(props) {
         const aliveRef = useRef(true);
         const rafRef = useRef(0);
+        const timerRef = useRef(0);
         const canvasRef = useRef(null);
-        const raceRef = useRef(null);
+        const raceRef = useRef(null); // view state handed to draw()
+        const prevRef = useRef(null); // second-recent practice snapshot
+        const currRef = useRef(null); // most recent practice snapshot
+        const timeRef = useRef({ prev: 0, curr: 0 });
+        const idRef = useRef(
+          props.practiceId || localStorage.getItem("chariot.practiceId") || ""
+        );
+        const nRef = useRef(4);
+        const fracRef = useRef(1);
+        const doneRef = useRef(false);
         const trackRef = useRef(null);
-        const [phase, setPhase] = useState("idle");
-        const [label, setLabel] = useState("Start the races");
+        const [label, setLabel] = useState("Summoning the chariots…");
 
         useEffect(function () {
           const canvas = canvasRef.current;
@@ -438,7 +454,7 @@
             canvas.style.width = w + "px";
             canvas.style.height = h + "px";
             ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-            trackRef.current = buildTrack(w, h);
+            trackRef.current = buildTrack(w, h, nRef.current);
             draw(ctx, w, h, trackRef.current, raceRef.current);
           }
           window.addEventListener("resize", resize);
@@ -449,57 +465,125 @@
               draw(ctx, window.innerWidth, window.innerHeight, trackRef.current, raceRef.current);
             });
           }
+          /* Positions come only from practice_state polls: keep the last two
+           * snapshots and lerp racers[].p between them every frame. */
+          function viewState() {
+            const curr = currRef.current;
+            if (!curr) return null;
+            const prev = prevRef.current || curr;
+            const span = timeRef.current.curr - timeRef.current.prev;
+            let frac = 1;
+            if (span > 0) {
+              frac = Math.min(1, Math.max(0, (performance.now() - timeRef.current.prev) / span));
+            }
+            fracRef.current = frac;
+            return {
+              tick: curr.tick,
+              t: curr.t,
+              n: curr.n,
+              finished: curr.finished,
+              placements: curr.placements,
+              racers: curr.racers.map(function (rc, i) {
+                const before = prev.racers[i] || rc;
+                return {
+                  lane: rc.lane,
+                  p: before.p + (rc.p - before.p) * frac,
+                  done: rc.done,
+                  place: rc.place,
+                };
+              }),
+            };
+          }
+
+          function frame() {
+            if (!aliveRef.current) return;
+            const view = viewState();
+            if (view) {
+              raceRef.current = view;
+              draw(ctx, window.innerWidth, window.innerHeight, trackRef.current, view);
+            }
+            if (!doneRef.current || fracRef.current < 1) {
+              rafRef.current = requestAnimationFrame(frame);
+            }
+          }
+          rafRef.current = requestAnimationFrame(frame);
+
+          function accept(data) {
+            const had = currRef.current;
+            prevRef.current = had;
+            currRef.current = data;
+            const now = performance.now();
+            timeRef.current = { prev: had ? timeRef.current.curr : now, curr: now };
+            if (data.n && data.n !== nRef.current) {
+              nRef.current = data.n;
+              trackRef.current = buildTrack(window.innerWidth, window.innerHeight, nRef.current);
+            }
+            if (data.finished >= data.n) {
+              doneRef.current = true;
+              setLabel("The race is run");
+            } else {
+              setLabel("Racing…");
+            }
+          }
+
+          function poll() {
+            fetch("api/?action=practice_state&race=" + encodeURIComponent(idRef.current), {
+              cache: "no-store",
+            })
+              .then(function (res) {
+                if (res.status === 404) {
+                  doneRef.current = true;
+                  setLabel("This scroll hath turned to dust");
+                  return null;
+                }
+                return res.ok ? res.json() : null;
+              })
+              .then(function (data) {
+                if (!aliveRef.current || !data) return;
+                accept(data);
+                if (!doneRef.current) timerRef.current = setTimeout(poll, 250);
+              })
+              .catch(function () {
+                // a wavered link simply polls again (the notice arrives in 4.8)
+                if (aliveRef.current && !doneRef.current) {
+                  timerRef.current = setTimeout(poll, 250);
+                }
+              });
+          }
+
+          // An id from the landing or localStorage starts polling at once;
+          // without one, open a fresh practice race and keep its id + snapshot.
+          function begin() {
+            if (idRef.current) {
+              poll();
+              return;
+            }
+            api("create_practice", { racers: 4 })
+              .then(function (data) {
+                idRef.current = data.practiceId;
+                localStorage.setItem("chariot.practiceId", data.practiceId);
+                if (data.snapshot) accept(data.snapshot);
+                poll();
+              })
+              .catch(function () {
+                if (aliveRef.current) timerRef.current = setTimeout(begin, 1000);
+              });
+          }
+          begin();
+
           return function () {
             aliveRef.current = false;
+            clearTimeout(timerRef.current);
             cancelAnimationFrame(rafRef.current);
             window.removeEventListener("resize", resize);
           };
         }, []);
 
-        function startRace() {
-          if (phase === "racing") return;
-          setPhase("racing");
-          setLabel("Racing…");
-
-          seededRandom()
-            .catch(function () {
-              return mulberry32((Date.now() ^ Math.floor(Math.random() * 4294967295)) >>> 0);
-            })
-            .then(function (rand) {
-              raceRef.current = createRace(rand);
-              const canvas = canvasRef.current;
-              const ctx = canvas.getContext("2d");
-              let acc = 0;
-              let last = performance.now();
-
-              function loop(now) {
-                if (!aliveRef.current) return;
-                const race = raceRef.current;
-                acc += Math.min(0.1, (now - last) / 1000);
-                last = now;
-                while (acc >= STEP && race.finished < 4) {
-                  stepRace(race);
-                  acc -= STEP;
-                }
-                draw(ctx, window.innerWidth, window.innerHeight, trackRef.current, race);
-                if (race.finished < 4) {
-                  rafRef.current = requestAnimationFrame(loop);
-                } else {
-                  setPhase("done");
-                  setLabel("Race again");
-                }
-              }
-              rafRef.current = requestAnimationFrame(loop);
-            });
-        }
-
         return (
           <React.Fragment>
             <canvas id="game" ref={canvasRef} />
             <div className="top">
-              <button onClick={startRace} disabled={phase === "racing"}>
-                {label}
-              </button>
+              <button disabled>{label}</button>
             </div>
             <a
               className="gate-link"
@@ -586,13 +670,13 @@
             ? { name: "join", roomId: room.toLowerCase() }
             : { name: "dust" };
         }
-        if (practice) return { name: "practice" };
+        if (practice) return { name: "practice", practiceId: practice };
         return { name: "landing" };
       }
 
       /* ------------------------------- Landing ----------------------------- */
       function Landing(props) {
-        const [panel, setPanel] = useState("menu"); // menu | create | join
+        const [panel, setPanel] = useState("menu"); // menu | create | join | practice
         const [racers, setRacers] = useState(4);
         const [souls, setSouls] = useState(8);
         const [code, setCode] = useState("");
@@ -639,7 +723,22 @@
         }
 
         function practice() {
-          props.navigate("/?practice=" + Date.now().toString(36));
+          setPanel("practice");
+        }
+
+        function ride() {
+          setBusy(true);
+          setNotice("");
+          api("create_practice", { racers: racers })
+            .then(function (data) {
+              setBusy(false);
+              localStorage.setItem("chariot.practiceId", data.practiceId);
+              props.navigate("/?practice=" + data.practiceId);
+            })
+            .catch(function (err) {
+              setBusy(false);
+              setNotice(err.message);
+            });
         }
 
         let body;
@@ -710,6 +809,37 @@
               {notice ? <p className="notice">{notice}</p> : null}
               <div className="menu">
                 <button onClick={seekRoom}>Seek the Room</button>
+                <a className="linkish" href="/" onClick={backToMenu}>
+                  ◂ The Gates
+                </a>
+              </div>
+            </React.Fragment>
+          );
+        } else if (panel === "practice") {
+          body = (
+            <React.Fragment>
+              <h1>Ride the Practice Round</h1>
+              <p className="tagline">the chariots run whether thou watchest or not</p>
+              <div className="field">
+                <div className="rowline">
+                  <label>Chariots upon the track</label>
+                  <span className="tally">{racers}</span>
+                </div>
+                <input
+                  type="range"
+                  min="2"
+                  max="8"
+                  value={racers}
+                  onChange={function (e) {
+                    setRacers(parseInt(e.target.value, 10));
+                  }}
+                />
+              </div>
+              {notice ? <p className="notice">{notice}</p> : null}
+              <div className="menu">
+                <button onClick={ride} disabled={busy}>
+                  {busy ? "Summoning…" : "Ride!"}
+                </button>
                 <a className="linkish" href="/" onClick={backToMenu}>
                   ◂ The Gates
                 </a>
@@ -893,7 +1023,7 @@
 
         let view;
         if (route.name === "practice") {
-          view = <RaceView navigate={navigate} />;
+          view = <RaceView practiceId={route.practiceId} navigate={navigate} />;
         } else if (route.name === "join") {
           view = <JoinGate roomId={route.roomId} navigate={navigate} />;
         } else if (route.name === "dust") {

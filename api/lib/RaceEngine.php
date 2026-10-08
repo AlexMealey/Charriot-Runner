@@ -16,6 +16,16 @@ class RaceEngine
     public const STEP = 1 / 60;
     public const BASE_SPEED = 0.12;
 
+    /** Word-names for the heralds to cry (copied from public/index.html). */
+    public const NAME_A = [
+        "Swift", "Grim", "Golden", "Iron", "Silent", "Wild", "Bold", "Fierce",
+        "Proud", "Stormbound", "Ember", "Dusky", "Noble", "Cunning", "Valiant", "Shadow",
+    ];
+    public const NAME_B = [
+        "Badger", "Quill", "Falcon", "Stag", "Raven", "Fox", "Boar", "Hound",
+        "Wyvern", "Gryphon", "Hart", "Adder", "Otter", "Crow", "Wolf", "Mare",
+    ];
+
     /** Fresh 32-bit PRNG state. */
     public static function prngNew(): int
     {
@@ -143,6 +153,33 @@ class RaceEngine
     {
         $t = min(1, max(0, ($x - $e0) / ($e1 - $e0)));
         return $t * $t * (3 - 2 * $t);
+    }
+
+    /**
+     * Catch the race up to $targetTick, one fixed step per tick.
+     *
+     * Capped at 900 steps per call so a long-idle race cannot stall a
+     * request; the next call continues from the stored tick. Stepping is
+     * deterministic in the stored PRNG state, so one call to tick N equals
+     * N single steps.
+     */
+    public static function advance(array &$state, int $targetTick): void
+    {
+        for ($steps = 0; $state['tick'] < $targetTick && $steps < 900; $steps++) {
+            self::step($state);
+        }
+    }
+
+    /** n word-names ("Swift Badger"), rolled from the bundled word lists. */
+    public static function names(int $n): array
+    {
+        $out = [];
+        for ($i = 0; $i < $n; $i++) {
+            $a = self::NAME_A[random_int(0, count(self::NAME_A) - 1)];
+            $b = self::NAME_B[random_int(0, count(self::NAME_B) - 1)];
+            $out[] = $a . ' ' . $b;
+        }
+        return $out;
     }
 
     /* --- 32-bit emulation: JS bitwise semantics on 64-bit PHP ints ------- */

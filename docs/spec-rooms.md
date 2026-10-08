@@ -269,7 +269,7 @@ just as importantly, what not to.
 
 | Stage | File | Status |
 | --- | --- | --- |
-| 1 — Backend race engine + practice slice | [stages/stage-1.md](stages/stage-1.md) | in progress (1.1–1.3 done) |
+| 1 — Backend race engine + practice slice | [stages/stage-1.md](stages/stage-1.md) | steps done (1.1–1.9), acceptance pending runtime |
 | 2 — Landing page & routing | [stages/stage-2.md](stages/stage-2.md) | **done** |
 | 3 — Rooms: create, join, lobby | [stages/stage-3.md](stages/stage-3.md) | not started |
 | 4 — Multiplayer race + predictions | [stages/stage-4.md](stages/stage-4.md) | not started |
