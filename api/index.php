@@ -20,6 +20,28 @@ function practiceSnapshot(array $doc): array
     ];
 }
 
+/** Room snapshot shared by join_room and room_state (spec §5). */
+function roomSnapshot(array $room): array
+{
+    $participants = [];
+    foreach ($room['participants'] as $p) {
+        $participants[] = [
+            'id' => $p['id'],
+            'nickname' => $p['nickname'],
+            'role' => $p['role'],
+            'lane' => $p['lane'],
+        ];
+    }
+    return [
+        'id' => $room['id'],
+        'status' => $room['status'],
+        'config' => $room['config'],
+        'participants' => $participants,
+        'raceNo' => $room['raceNo'],
+        'race' => $room['race'],
+    ];
+}
+
 header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
@@ -62,6 +84,156 @@ switch ($action) {
         echo json_encode([
             'message' => 'Hello from the Chariot Racing PHP API',
         ]);
+        break;
+
+    case 'create_room':
+        $body = json_decode(file_get_contents('php://input') ?: '[]', true);
+        if (!is_array($body)) {
+            $body = [];
+        }
+        $maxRacers = $body['maxRacers'] ?? null;
+        $maxJoiners = $body['maxJoiners'] ?? null;
+        if (
+            !is_int($maxRacers) || $maxRacers < 2 || $maxRacers > 8 ||
+            !is_int($maxJoiners) || $maxJoiners < 2 || $maxJoiners > 16
+        ) {
+            http_response_code(400);
+            echo json_encode([
+                'error' => ['code' => 'bad_request', 'message' => 'maxRacers must be 2..8 and maxJoiners 2..16'],
+            ]);
+            break;
+        }
+        $room = RoomStore::createRoom(['maxRacers' => $maxRacers, 'maxJoiners' => $maxJoiners]);
+        RoomStore::saveRoom($room);
+        $scheme = !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ? 'https' : 'http';
+        $origin = $scheme . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost');
+        echo json_encode([
+            'roomId' => $room['id'],
+            'hostToken' => $room['hostToken'],
+            'joinUrl' => $origin . '/?room=' . $room['id'],
+        ]);
+        break;
+
+    case 'join_room':
+        $body = json_decode(file_get_contents('php://input') ?: '[]', true);
+        if (!is_array($body)) {
+            $body = [];
+        }
+        $roomId = is_string($body['roomId'] ?? null) ? $body['roomId'] : '';
+        $nickname = is_string($body['nickname'] ?? null) ? trim($body['nickname']) : '';
+        $nickname = mb_substr($nickname, 0, 24);
+        if ($nickname === '') {
+            http_response_code(400);
+            echo json_encode([
+                'error' => ['code' => 'bad_request', 'message' => 'The heralds need a name (24 characters at most).'],
+            ]);
+            break;
+        }
+        $room = RoomStore::getRoom($roomId);
+        if ($room === null) {
+            http_response_code(404);
+            echo json_encode([
+                'error' => ['code' => 'room_not_found', 'message' => 'No such room.'],
+            ]);
+            break;
+        }
+        if (count($room['participants']) >= $room['config']['maxJoiners']) {
+            http_response_code(409);
+            echo json_encode([
+                'error' => ['code' => 'room_full', 'message' => 'Every seat in this room is taken.'],
+            ]);
+            break;
+        }
+        // Rider while a racer slot is free: lanes go in join order, the
+        // lowest open one; past the cap (or after the start) one spectates.
+        $taken = [];
+        foreach ($room['participants'] as $p) {
+            if ($p['role'] === 'racer') {
+                $taken[] = $p['lane'];
+            }
+        }
+        if ($room['status'] !== 'racing' && count($taken) < $room['config']['maxRacers']) {
+            $role = 'racer';
+            $lane = 0;
+            while (in_array($lane, $taken, true)) {
+                $lane++;
+            }
+        } else {
+            $role = 'spectator';
+            $lane = null;
+        }
+        $participant = [
+            'id' => bin2hex(random_bytes(8)),
+            'token' => bin2hex(random_bytes(32)),
+            'nickname' => $nickname,
+            'role' => $role,
+            'lane' => $lane,
+            'joinedAt' => date(DATE_ATOM),
+            'prediction' => null,
+        ];
+        $room['participants'][] = $participant;
+        $room['updatedAt'] = date(DATE_ATOM);
+        RoomStore::saveRoom($room);
+        echo json_encode([
+            'participantId' => $participant['id'],
+            'token' => $participant['token'],
+            'role' => $participant['role'],
+            'snapshot' => roomSnapshot($room),
+        ]);
+        break;
+
+    case 'room_state':
+        $id = (string) ($_GET['room'] ?? '');
+        $room = RoomStore::getRoom($id);
+        if ($room === null) {
+            http_response_code(404);
+            echo json_encode([
+                'error' => ['code' => 'room_not_found', 'message' => 'No such room.'],
+            ]);
+            break;
+        }
+        // A poll is an interaction (spec §8): it only bumps updatedAt — the
+        // snapshot itself stays put until Stage 4 gives the room a race.
+        // `tick`/`token` are accepted (spec §5) but unused until then.
+        $room['updatedAt'] = date(DATE_ATOM);
+        RoomStore::saveRoom($room);
+        echo json_encode(roomSnapshot($room));
+        break;
+
+    case 'leave_room':
+        $body = json_decode(file_get_contents('php://input') ?: '[]', true);
+        if (!is_array($body)) {
+            $body = [];
+        }
+        $roomId = is_string($body['roomId'] ?? null) ? $body['roomId'] : '';
+        $token = is_string($body['token'] ?? null) ? $body['token'] : '';
+        $room = RoomStore::getRoom($roomId);
+        if ($room === null) {
+            http_response_code(404);
+            echo json_encode([
+                'error' => ['code' => 'room_not_found', 'message' => 'No such room.'],
+            ]);
+            break;
+        }
+        $left = null;
+        foreach ($room['participants'] as $i => $p) {
+            if ($p['token'] === $token) {
+                unset($room['participants'][$i]); // a racer lane frees up
+                $left = $p;
+                break;
+            }
+        }
+        if ($left === null) {
+            http_response_code(403);
+            echo json_encode([
+                'error' => ['code' => 'not_a_participant', 'message' => 'Thou art not of this room.'],
+            ]);
+            break;
+        }
+        $room['participants'] = array_values($room['participants']);
+        $room['updatedAt'] = date(DATE_ATOM);
+        RoomStore::saveRoom($room);
+        echo json_encode(['ok' => true]);
         break;
 
     case 'create_practice':

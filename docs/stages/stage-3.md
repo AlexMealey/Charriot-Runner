@@ -1,21 +1,21 @@
 # Stage 3 — Rooms: create, join, lobby
 
-Status: not started
+Status: in progress — steps 3.1–3.10 done, acceptance pending
 Goal: a shareable room exists on the server; joiners gather in a live lobby
 with roles and a copyable link.
 
 Progress (see steps below; checked = done and reviewed):
 
-- [ ] 3.1 `RoomStore` room methods
-- [ ] 3.2 Action `create_room`
-- [ ] 3.3 Action `join_room`
-- [ ] 3.4 Action `room_state`
-- [ ] 3.5 Action `leave_room`
-- [ ] 3.6 Frontend: join success → lobby
-- [ ] 3.7 Lobby roster
-- [ ] 3.8 Share panel
-- [ ] 3.9 Poll `room_state`
-- [ ] 3.10 Start-race button (unwired)
+- [x] 3.1 `RoomStore` room methods
+- [x] 3.2 Action `create_room`
+- [x] 3.3 Action `join_room`
+- [x] 3.4 Action `room_state`
+- [x] 3.5 Action `leave_room`
+- [x] 3.6 Frontend: join success → lobby
+- [x] 3.7 Lobby roster
+- [x] 3.8 Share panel
+- [x] 3.9 Poll `room_state`
+- [x] 3.10 Start-race button (unwired)
 
 Files in play (touch nothing else):
 

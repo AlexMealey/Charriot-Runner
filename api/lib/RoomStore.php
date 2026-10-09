@@ -9,16 +9,19 @@ declare(strict_types=1);
  *   <kind>/<id>.json                     — one document per id
  *   <kind>/<id>/race-<n>.ticks.jsonl.gz  — gzipped tick history per race
  *
- * $kind is "practice" for now; "rooms" arrives in Stage 3. Every write
- * serializes through an flock sidecar and lands via temp-file-then-rename,
- * so back-to-back (or concurrent) writes never expose a partial or empty
- * file — readers see the old document or the new one, never a blend.
+ * $kind is "practice" or "rooms". Every write serializes through an flock
+ * sidecar and lands via temp-file-then-rename, so back-to-back (or
+ * concurrent) writes never expose a partial or empty file — readers see the
+ * old document or the new one, never a blend.
  */
 class RoomStore
 {
     /** Write a document atomically. */
     public static function put(string $kind, string $id, array $doc): void
     {
+        if (!self::validId($id)) {
+            return;
+        }
         $dest = self::root() . '/' . $kind . '/' . $id . '.json';
         self::ensureDir(dirname($dest));
 
@@ -45,6 +48,9 @@ class RoomStore
     /** Read a document; null when missing or unreadable. */
     public static function get(string $kind, string $id): ?array
     {
+        if (!self::validId($id)) {
+            return null;
+        }
         $path = self::root() . '/' . $kind . '/' . $id . '.json';
         if (!is_file($path)) {
             return null;
@@ -56,7 +62,7 @@ class RoomStore
     /** Append tick lines (one JSON string per line) to a race's history. */
     public static function appendTicks(string $kind, string $id, int $raceNo, array $lines): void
     {
-        if ($lines === []) {
+        if ($lines === [] || !self::validId($id)) {
             return;
         }
         $dir = self::root() . '/' . $kind . '/' . $id;
@@ -71,6 +77,36 @@ class RoomStore
         gzclose($gz);
     }
 
+    /** Build a fresh lobby room document (spec §4); persist via saveRoom(). */
+    public static function createRoom(array $cfg): array
+    {
+        $now = date(DATE_ATOM);
+        return [
+            'id' => bin2hex(random_bytes(16)),
+            'createdAt' => $now,
+            'updatedAt' => $now,
+            'hostToken' => bin2hex(random_bytes(32)),
+            'config' => $cfg,
+            'status' => 'lobby',
+            'participants' => [],
+            'raceNo' => 0,
+            'race' => null,
+            'history' => [],
+        ];
+    }
+
+    /** Load a room document; null when the id is malformed or unknown. */
+    public static function getRoom(string $id): ?array
+    {
+        return self::get('rooms', $id);
+    }
+
+    /** Persist a room document (atomic, see put()). */
+    public static function saveRoom(array $doc): void
+    {
+        self::put('rooms', $doc['id'], $doc);
+    }
+
     /** Root of the store, one level above api/. */
     private static function root(): string
     {
@@ -83,5 +119,11 @@ class RoomStore
         if (!is_dir($dir)) {
             @mkdir($dir, 0777, true);
         }
+    }
+
+    /** Ids are hex (spec §2); anything else never touches the disk path. */
+    private static function validId(string $id): bool
+    {
+        return preg_match('/^[0-9a-f]+$/', $id) === 1;
     }
 }

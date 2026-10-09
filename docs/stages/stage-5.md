@@ -78,4 +78,5 @@ Done when: repeated practice races work without touching room code.
 
 ## Not in this stage
 
-Export (deferred — `docs/stages/stage-6.md`), TTL and docs (Stage 7).
+Export (deferred — `docs/spec-rooms.md` §7), custom tracks & racers
+(spec-only — `docs/stages/stage-6.md`), TTL and docs (Stage 7).

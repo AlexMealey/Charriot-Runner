@@ -93,5 +93,6 @@ Done when: README matches the shipped API exactly.
 
 ## Not in this stage
 
-Export (deferred — `docs/stages/stage-6.md`), and anything listed in
+Export (deferred — `docs/spec-rooms.md` §7), custom tracks & racers
+(spec-only — `docs/stages/stage-6.md`), and anything listed in
 `docs/spec-rooms.md` §12 (out of scope).
