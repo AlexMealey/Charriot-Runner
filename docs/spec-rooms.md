@@ -165,6 +165,15 @@ out. Errors: HTTP status + `{ "error": { "code": "room_not_found", "message": "�
 | `set_prediction` | POST | `{roomId, token, pick}` | `{ok}` | `pick` = lane; only before start. |
 | `create_practice` | POST | `{racers}` | `{practiceId}` | 2–8 racers. Ephemeral, no join. |
 | `practice_state` | GET | `race`, `tick` | race snapshot | Same shape as `room_state.race`. |
+
+Note (4.1): the `race` block carried by `room_state`/`join_room` snapshots is
+`{tick, t, n, finished, racers, placements, startedAt, finishedAt}`, with slim
+racers `{lane, p, done, place}` and slim placements `{lane, place}` — a
+projection of the stored engine doc; `seed`, `prngState` and the rest of the
+sim state never leave the server (§9). `start_race` stores `seed` (opaque
+base64, §4), `startedAt` and `finishedAt: null`; `raceNo` is left for
+`rematch` to bump.
+
 **Deferred with §7 (export):** `request_export` `{roomId?, practiceId?, raceNo}`
 → `{jobId}`, `export_status` `job` → `{status, url?}`, `export_download` `job`
 → MP4 stream. The action names are reserved; nothing implements them yet.
