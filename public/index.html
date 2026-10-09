@@ -901,14 +901,58 @@
        * Shown at /?room=<id> before entering: a name for the heralds, rolled *
        * afresh with the dice. Once join_room answers, the lobby takes over.    *
        * ------------------------------------------------------------------- */
-      function JoinGate(props) {
-        const [nickname, setNickname] = useState(wordName);
-        const [busy, setBusy] = useState(false);
-        const [notice, setNotice] = useState("");
-        const [lost, setLost] = useState(false);
-        const [session, setSession] = useState(null);
+       function JoinGate(props) {
+         const [nickname, setNickname] = useState(wordName);
+         const [busy, setBusy] = useState(false);
+         const [notice, setNotice] = useState("");
+         const [lost, setLost] = useState(false);
+         const [session, setSession] = useState(null);
 
-        if (lost) return <DustScroll navigate={props.navigate} />;
+         // Reload keeps thy identity: the cached join (step 3.6) is re-checked
+         // against the live roster and lifted straight back into the lobby.
+         useEffect(function () {
+           let alive = true;
+           let raw = null;
+           try {
+             raw = localStorage.getItem("chariot.player." + props.roomId);
+           } catch (e) {
+             raw = null;
+           }
+           if (!raw) return function () { alive = false; };
+           let cached = null;
+           try {
+             cached = JSON.parse(raw);
+           } catch (e) {
+             cached = null;
+           }
+           if (!cached || !cached.participantId) {
+             localStorage.removeItem("chariot.player." + props.roomId);
+             return function () { alive = false; };
+           }
+           fetch("api/?action=room_state&room=" + encodeURIComponent(props.roomId))
+             .then(function (res) { return res.ok ? res.json() : null; })
+             .then(function (snap) {
+               if (!alive || !snap || !Array.isArray(snap.participants)) return;
+               const mine = snap.participants.some(function (p) {
+                 return p.id === cached.participantId;
+               });
+               if (mine) {
+                 setSession({
+                   participantId: cached.participantId,
+                   token: cached.token,
+                   role: cached.role,
+                   snapshot: snap,
+                 });
+               } else {
+                 // gone from the roster (left, or room expired mid-join)
+                 localStorage.removeItem("chariot.player." + props.roomId);
+               }
+             })
+             .catch(function () { /* wavering link: the join form simply stays */ });
+           return function () { alive = false; };
+         }, [props.roomId]);
+
+         if (lost) return <DustScroll navigate={props.navigate} />;
 
         function home(e) {
           e.preventDefault();

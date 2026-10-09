@@ -122,11 +122,11 @@ Done when: states (host/guest, 2+/&lt;2) all read correctly.
 
 ## Acceptance
 
-- [ ] Two browsers on `/?room=<id>` see the same roster live (≤250 ms lag).
-- [ ] Joining past the racer cap lands the joiner as spectator.
-- [ ] Copy button puts the exact join URL on the clipboard.
-- [ ] Reload keeps your identity (tokens in `localStorage`).
-- [ ] No Node/npm/npx introduced anywhere.
+- [x] Two browsers on `/?room=<id>` see the same roster live (≤250 ms lag).
+- [x] Joining past the racer cap lands the joiner as spectator.
+- [x] Copy button puts the exact join URL on the clipboard.
+- [x] Reload keeps your identity (tokens in `localStorage`).
+- [x] No Node/npm/npx introduced anywhere.
 
 ## Not in this stage
 
