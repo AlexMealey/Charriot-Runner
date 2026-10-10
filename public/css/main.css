@@ -506,6 +506,78 @@ input[type="range"] {
   font-size: 14px;
 }
 
+/* ---- results card over the frozen track (5.1) ---- */
+.stage.results {
+  background: rgba(6, 4, 3, 0.72);
+}
+
+.placings {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  text-align: left;
+}
+
+.placing {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 12px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--lane-line);
+  border-radius: 6px;
+}
+
+.placing .place {
+  flex: 0 0 auto;
+  width: 44px;
+  color: var(--gold-bright);
+  font-family: Cinzel, Georgia, serif;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+.placing .swatch {
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  border: 1px solid rgba(0, 0, 0, 0.55);
+}
+
+.placing .nick {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 15px;
+}
+
+/* ---- seers block (5.2): a true seer shines gold, the rest fade ---- */
+.seer {
+  border-color: var(--gold);
+  background: rgba(201, 164, 92, 0.16);
+  box-shadow: 0 0 14px rgba(201, 164, 92, 0.28);
+}
+
+.seer::after {
+  content: "true seer";
+  flex: 0 0 auto;
+  color: var(--gold-bright);
+  font-size: 12px;
+  font-style: italic;
+  letter-spacing: 0.08em;
+}
+
+.dim {
+  opacity: 0.5;
+}
+
 /* ---- wavering-link notice (4.8): raised by two failed polls ---- */
 body.waver::after {
   content: "thine link doth waver…";

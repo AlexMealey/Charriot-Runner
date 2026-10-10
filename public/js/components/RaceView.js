@@ -18,7 +18,12 @@ function RaceView(props) {
   const fracRef = useRef(1);
   const doneRef = useRef(false);
   const trackRef = useRef(null);
+  const restartRef = useRef(null); // the feed effect's start-over (5.4)
   const [label, setLabel] = useState("Summoning the chariots…");
+  // The room's finished verdict with the standings and wagerers it carries
+  // (5.1–5.2): while set, the results card stands in place of the finish
+  // label.
+  const [results, setResults] = useState(null);
 
   useEffect(function () {
     /* Smoothing (4.10): the race view relaxes the 250 ms lock to ~500 ms —
@@ -158,8 +163,27 @@ function RaceView(props) {
             if (data.race) {
               accept(Object.assign({}, data.race, { names: data.names }));
             }
+            // The room itself turns "finished" once the race is run: that
+            // verdict raises the results card, and `accept` above has
+            // already fallen the 500 ms feed silent (5.1).
+            if (data.status === "finished" && data.race) {
+              setResults({
+                placements: data.race.placements,
+                names: data.names,
+                participants: data.participants,
+              });
+            }
           } else {
             accept(data);
+            // Practice wears the same parchment (5.5): placements only —
+            // no participants ride along, so no seers block, and Race
+            // Again walks back to the picker instead of calling rematch.
+            if (data.finished >= data.n) {
+              setResults({
+                placements: data.placements,
+                names: data.names,
+              });
+            }
           }
           if (!doneRef.current) timerRef.current = setTimeout(poll, POLL_MS);
         })
@@ -198,6 +222,24 @@ function RaceView(props) {
     }
     begin();
 
+    /* A rematch begins the view anew (5.4): the card drops, the segment
+     * refs blank so the fresh race snaps in from tick 0, and both loops
+     * spin again — the host's api answer and a bystander's slow watch
+     * both land here. */
+    function restart() {
+      clearTimeout(timerRef.current);
+      doneRef.current = false;
+      prevRef.current = null;
+      currRef.current = null;
+      timeRef.current = { prev: 0, curr: 0 };
+      setResults(null);
+      setLabel("Summoning the chariots…");
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = requestAnimationFrame(frame);
+      poll();
+    }
+    restartRef.current = restart;
+
     return function () {
       aliveRef.current = false;
       clearTimeout(timerRef.current);
@@ -206,12 +248,47 @@ function RaceView(props) {
     };
   }, []);
 
+  /* Bystanders keep watch while the card stands (5.4): the fast feed
+   * stops at the finish, so this slow room_state poll — the only traffic
+   * left — is what notices the host's rematch; the card then drops on the
+   * same reset the host takes from its api answer. The host's own browser
+   * needs no watch: its button answers. */
+  useEffect(function () {
+    if (!props.roomId || !results) return;
+    if (localStorage.getItem("chariot.host." + props.roomId)) return;
+    const q =
+      "api/?action=room_state&room=" + encodeURIComponent(props.roomId);
+    return poll(q, 2000, function (data) {
+      if (data.status === "racing" && restartRef.current) {
+        restartRef.current();
+      }
+    });
+  }, [results]);
+
   return (
     <React.Fragment>
       <canvas id="game" ref={canvasRef} />
-      <div className="top">
-        <button disabled>{label}</button>
-      </div>
+      {results ? (
+        <ResultsCard
+          roomId={props.roomId}
+          placements={results.placements}
+          names={results.names}
+          participants={results.participants}
+          onRaceAgain={function () {
+            // Rooms restart in place on the fresh race (5.4); practice
+            // walks back to the picker, whose Ride! opens a new race (5.5).
+            if (props.roomId) {
+              if (restartRef.current) restartRef.current();
+            } else {
+              props.navigate("/?panel=practice");
+            }
+          }}
+        />
+      ) : (
+        <div className="top">
+          <button disabled>{label}</button>
+        </div>
+      )}
       <a
         className="gate-link"
         href="/"

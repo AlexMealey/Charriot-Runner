@@ -1,6 +1,9 @@
 /* ------------------------------- Landing ----------------------------- */
 function Landing(props) {
-  const [panel, setPanel] = useState("menu"); // menu | create | join | practice
+  // 5.5: Race Again's /?panel=practice reopens the count picker at once.
+  const [panel, setPanel] = useState(
+    new URLSearchParams(window.location.search).get("panel") || "menu"
+  ); // menu | create | join | practice
   const [racers, setRacers] = useState(4);
   const [souls, setSouls] = useState(8);
   const [code, setCode] = useState("");
