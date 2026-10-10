@@ -174,6 +174,13 @@ sim state never leave the server (§9). `start_race` stores `seed` (opaque
 base64, §4), `startedAt` and `finishedAt: null`; `raceNo` is left for
 `rematch` to bump.
 
+Note (4.2): while `status: "racing"`, every `room_state` poll catches the
+sim up to *now* (fixed 60 Hz steps, at most 900 per poll), appends the new
+tick lines to `race-<raceNo>.ticks.jsonl.gz` (§3) under one lock, and
+answers with the advanced `race` plus `names` — racer nicknames by lane.
+When all racers are done the room flips to `status: "finished"` and
+stamps `finishedAt`; later polls keep the frozen final frame.
+
 **Deferred with §7 (export):** `request_export` `{roomId?, practiceId?, raceNo}`
 → `{jobId}`, `export_status` `job` → `{status, url?}`, `export_download` `job`
 → MP4 stream. The action names are reserved; nothing implements them yet.

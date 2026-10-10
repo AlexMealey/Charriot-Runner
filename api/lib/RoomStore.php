@@ -25,24 +25,51 @@ class RoomStore
         $dest = self::root() . '/' . $kind . '/' . $id . '.json';
         self::ensureDir(dirname($dest));
 
-        $json = json_encode($doc, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
-        if ($json === false) {
-            return; // keep the previous file rather than store garbage
-        }
-
         $lock = @fopen($dest . '.lock', 'c');
         if ($lock === false || !flock($lock, LOCK_EX)) {
             return;
         }
+        self::writeDoc($dest, $doc);
+        flock($lock, LOCK_UN);
+        fclose($lock);
+    }
 
-        $tmp = $dest . '.tmp-' . bin2hex(random_bytes(6));
-        if (@file_put_contents($tmp, $json) === strlen($json)) {
-            rename($tmp, $dest); // atomic swap: readers see old or new
-        } else {
-            @unlink($tmp);
+    /**
+     * Read → modify → write under one lock: $fn receives the stored document
+     * and returns the document to persist. History appends made inside $fn
+     * share the sidecar lock, so concurrent polls can neither interleave
+     * tick lines nor lose each other's steps (code review C1). Returns the
+     * persisted document, or null when the id is unknown, the file is
+     * unreadable, or the lock cannot be taken. Never calls put() — a second
+     * handle on the same sidecar would deadlock against our own lock.
+     */
+    public static function mutate(string $kind, string $id, callable $fn): ?array
+    {
+        if (!self::validId($id)) {
+            return null;
+        }
+        $dest = self::root() . '/' . $kind . '/' . $id . '.json';
+        if (!is_file($dest)) {
+            return null;
+        }
+        self::ensureDir(dirname($dest));
+
+        $lock = @fopen($dest . '.lock', 'c');
+        if ($lock === false || !flock($lock, LOCK_EX)) {
+            return null;
+        }
+        $doc = json_decode((string) @file_get_contents($dest), true);
+        $out = null;
+        if (is_array($doc)) {
+            $changed = $fn($doc);
+            if (is_array($changed)) {
+                self::writeDoc($dest, $changed);
+                $out = $changed;
+            }
         }
         flock($lock, LOCK_UN);
         fclose($lock);
+        return $out;
     }
 
     /** Read a document; null when missing or unreadable. */
@@ -105,6 +132,21 @@ class RoomStore
     public static function saveRoom(array $doc): void
     {
         self::put('rooms', $doc['id'], $doc);
+    }
+
+    /** Temp-file-then-rename swap; the caller holds the sidecar lock. */
+    private static function writeDoc(string $dest, array $doc): void
+    {
+        $json = json_encode($doc, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+        if ($json === false) {
+            return; // keep the previous file rather than store garbage
+        }
+        $tmp = $dest . '.tmp-' . bin2hex(random_bytes(6));
+        if (@file_put_contents($tmp, $json) === strlen($json)) {
+            rename($tmp, $dest); // atomic swap: readers see old or new
+        } else {
+            @unlink($tmp);
+        }
     }
 
     /** Root of the store, one level above api/. */

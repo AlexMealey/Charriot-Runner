@@ -42,6 +42,7 @@ function draw(ctx, w, h, tr, race) {
   const T = theme();
   const state = race || IDLE;
   const n = state.n || 4;
+  const names = state.names || [];
 
   // torch-lit field
   const bg = ctx.createRadialGradient(
@@ -154,7 +155,11 @@ function draw(ctx, w, h, tr, race) {
     ctx.restore();
     ctx.fillStyle = "#3b2a16";
     ctx.font = "14px 'IM Fell English', Georgia, serif";
-    ctx.fillText(ORDINAL[i] + "   " + RACERS[rc.lane].name, sx + 46, rowY);
+    ctx.fillText(
+      ORDINAL[i] + "   " + (names[rc.lane] || RACERS[rc.lane].name),
+      sx + 46,
+      rowY
+    );
   });
 
   // legend shields
@@ -170,6 +175,6 @@ function draw(ctx, w, h, tr, race) {
     ctx.restore();
     ctx.fillStyle = T.inkDim;
     ctx.font = "14px 'IM Fell English', Georgia, serif";
-    ctx.fillText(r.name, gx + 16, gy + 5);
+    ctx.fillText(names[i] || r.name, gx + 16, gy + 5);
   });
 }

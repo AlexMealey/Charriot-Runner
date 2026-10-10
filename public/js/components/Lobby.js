@@ -5,6 +5,8 @@
  * -------------------------------------------------------------------- */
 function Lobby(props) {
   const [copied, setCopied] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState("");
   const [snap, setSnap] = useState(props.session.snapshot);
   const isHost = !!localStorage.getItem("chariot.host." + props.roomId);
   const url = window.location.origin + "/?room=" + props.roomId;
@@ -18,14 +20,16 @@ function Lobby(props) {
     : "two riders at least";
 
   // Live roster: joins and leaves land in every browser within 250 ms.
+  // Once the race is on, the lobby stops polling — the race view takes over.
   useEffect(function () {
+    if (snap.status !== "lobby") return;
     const q =
       "api/?action=room_state&room=" +
       encodeURIComponent(props.roomId) +
       "&token=" +
       encodeURIComponent(props.session.token);
     return poll(q, 250, setSnap);
-  }, []);
+  }, [snap.status]);
 
   function home(e) {
     e.preventDefault();
@@ -66,6 +70,30 @@ function Lobby(props) {
     } else if (legacyCopy()) {
       flashCopied();
     }
+  }
+
+  /* The trumpet calls start_race; the roster poll then sees the room turn
+   * to racing, and every open lobby rides to the race view without reload. */
+  function startRace() {
+    setBusy(true);
+    setNotice("");
+    api("start_race", {
+      roomId: props.roomId,
+      hostToken: localStorage.getItem("chariot.host." + props.roomId),
+    })
+      .then(function () {
+        setBusy(false);
+      })
+      .catch(function (err) {
+        setBusy(false);
+        setNotice(err.message);
+      });
+  }
+
+  // Racing elsewhere (or already run): this lobby is over — hand over to
+  // the shared race view.
+  if (snap.status !== "lobby") {
+    return <RaceView roomId={props.roomId} navigate={props.navigate} />;
   }
 
   return (
@@ -110,9 +138,13 @@ function Lobby(props) {
             );
           })}
         </ul>
+        {notice ? <p className="notice">{notice}</p> : null}
         <div className="menu">
-          {/* Deliberately unwired: Stage 4 raises the trumpet. */}
-          <button className="trumpet" disabled={!canStart}>
+          <button
+            className="trumpet"
+            disabled={!canStart || busy}
+            onClick={startRace}
+          >
             Raise the Trumpet — {racers} riders
           </button>
           {canStart ? null : <p className="reason">{reason}</p>}

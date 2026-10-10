@@ -1,6 +1,7 @@
 /* ------------------------------ Join gate ---------------------------- *
  * Shown at /?room=<id> before entering: a name for the heralds, rolled *
- * afresh with the dice. Once join_room answers, the lobby takes over.    *
+ * afresh with the dice. Once join_room answers, the lobby takes over —     *
+ * or the race view when the contest already runs (step 4.5).              *
  * ------------------------------------------------------------------- */
 function JoinGate(props) {
   const [nickname, setNickname] = useState(wordName);
@@ -10,7 +11,8 @@ function JoinGate(props) {
   const [session, setSession] = useState(null);
 
   // Reload keeps thy identity: the cached join (step 3.6) is re-checked
-  // against the live roster and lifted straight back into the lobby.
+  // against the live roster and lifted straight back in — to the lobby, or
+  // to the race view when the contest has already started (step 4.5).
   useEffect(function () {
     let alive = true;
     let raw = null;
@@ -92,6 +94,12 @@ function JoinGate(props) {
   }
 
   if (session) {
+    // Mid-race (or already run): the lobby is over — hand straight to the
+    // shared race view at the current tick (step 4.5). A reload takes this
+    // same path through the cached identity above.
+    if (session.snapshot && session.snapshot.status !== "lobby") {
+      return <RaceView roomId={props.roomId} navigate={props.navigate} />;
+    }
     return (
       <Lobby
         roomId={props.roomId}

@@ -1,17 +1,17 @@
 # Stage 4 — Multiplayer race + predictions
 
-Status: in progress — 4.1 done, acceptance pending
+Status: in progress — 4.1–4.6 done, acceptance pending
 Goal: the host starts one server-authoritative race that every client sees
 identically; players back a winner beforehand.
 
 Progress (see steps below; checked = done and reviewed):
 
 - [x] 4.1 Action `start_race`
-- [ ] 4.2 `room_state` catch-up + tick history
-- [ ] 4.3 Wire the lobby button
-- [ ] 4.4 Shared race view
-- [ ] 4.5 Late join & reload
-- [ ] 4.6 Action `set_prediction`
+- [x] 4.2 `room_state` catch-up + tick history
+- [x] 4.3 Wire the lobby button
+- [x] 4.4 Shared race view
+- [x] 4.5 Late join & reload
+- [x] 4.6 Action `set_prediction`
 - [ ] 4.7 Prediction picker in the lobby
 - [ ] 4.8 Wavering-connection notice
 - [ ] 4.9 Player identity cache → rejoin as the same player

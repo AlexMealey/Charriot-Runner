@@ -32,6 +32,19 @@ function roomSnapshot(array $room): array
             'lane' => $p['lane'],
         ];
     }
+
+    // Racer nicknames by lane (4.2): the shared race view labels its
+    // chariots from this; null while the room has no race yet.
+    $names = null;
+    if ($room['race'] !== null) {
+        $names = array_fill(0, (int) $room['race']['n'], null);
+        foreach ($room['participants'] as $p) {
+            if ($p['role'] === 'racer' && isset($names[$p['lane']])) {
+                $names[$p['lane']] = $p['nickname'];
+            }
+        }
+    }
+
     return [
         'id' => $room['id'],
         'status' => $room['status'],
@@ -39,6 +52,7 @@ function roomSnapshot(array $room): array
         'participants' => $participants,
         'raceNo' => $room['raceNo'],
         'race' => raceSnapshot($room['race']),
+        'names' => $names,
     ];
 }
 
@@ -75,6 +89,57 @@ function raceSnapshot(?array $race): ?array
         'startedAt' => $race['startedAt'],
         'finishedAt' => $race['finishedAt'],
     ];
+}
+
+/**
+ * Catch a racing room's sim up to now (spec §3): one fixed tick at a time
+ * so every tick lands in the history, same 900-step cap as the practice
+ * poll — a paused tab resumes from the stored tick on its next poll.
+ * Stops the moment the race is run: no frozen ticks are appended, and the
+ * finish stamps status/finishedAt exactly once (code review C2). Runs
+ * inside RoomStore::mutate, so the history append shares the room's lock
+ * (code review C1).
+ */
+function catchUpRoomRace(array &$room): void
+{
+    $race = &$room['race'];
+    $targetTick = (int) floor((microtime(true) - (float) $race['startedAt']) * 60);
+    $lines = [];
+    $steps = 0;
+    while (
+        $race['finished'] < $race['n'] &&
+        $race['tick'] < $targetTick &&
+        $steps < 900
+    ) {
+        $steps++;
+        RaceEngine::step($race);
+        // slim shapes only (§3): seed, PRNG and surge parameters stay put
+        $racers = [];
+        foreach ($race['racers'] as $rc) {
+            $racers[] = [
+                'lane' => $rc['lane'],
+                'p' => $rc['p'],
+                'done' => $rc['done'],
+                'place' => $rc['place'],
+            ];
+        }
+        $placements = [];
+        foreach ($race['placements'] as $pl) {
+            $placements[] = ['lane' => $pl['lane'], 'place' => $pl['place']];
+        }
+        $lines[] = json_encode([
+            'tick' => $race['tick'],
+            't' => $race['t'],
+            'racers' => $racers,
+            'placements' => $placements,
+        ]);
+    }
+    // empty $lines (nothing advanced) are dropped inside appendTicks
+    RoomStore::appendTicks('rooms', $room['id'], $room['raceNo'], $lines);
+    if ($race['finished'] >= $race['n']) {
+        $race['finishedAt'] = microtime(true);
+        $room['status'] = 'finished';
+    }
 }
 
 header('Content-Type: application/json; charset=utf-8');
@@ -219,19 +284,31 @@ switch ($action) {
 
     case 'room_state':
         $id = (string) ($_GET['room'] ?? '');
-        $room = RoomStore::getRoom($id);
-        if ($room === null) {
+        if (RoomStore::getRoom($id) === null) {
             http_response_code(404);
             echo json_encode([
                 'error' => ['code' => 'room_not_found', 'message' => 'No such room.'],
             ]);
             break;
         }
-        // A poll is an interaction (spec §8): it only bumps updatedAt — the
-        // snapshot itself stays put until Stage 4.2 teaches it race catch-up.
-        // `tick`/`token` are accepted (spec §5) but unused until then.
-        $room['updatedAt'] = date(DATE_ATOM);
-        RoomStore::saveRoom($room);
+        // A poll is an interaction (spec §8): it bumps updatedAt and, while
+        // the race runs, catches the sim up to now — read, catch-up, tick
+        // appends and save held under one lock (step 4.2, review C1).
+        // `tick`/`token` stay accepted but unused (spec §5 delta form: not built).
+        $room = RoomStore::mutate('rooms', $id, function (array $doc): array {
+            $doc['updatedAt'] = date(DATE_ATOM);
+            if ($doc['status'] === 'racing') {
+                catchUpRoomRace($doc);
+            }
+            return $doc;
+        });
+        if ($room === null) {
+            http_response_code(500);
+            echo json_encode([
+                'error' => ['code' => 'storage_error', 'message' => 'The scroll would not unroll.'],
+            ]);
+            break;
+        }
         echo json_encode(roomSnapshot($room));
         break;
 
@@ -329,6 +406,72 @@ switch ($action) {
         $room['status'] = 'racing';
         $room['updatedAt'] = date(DATE_ATOM);
         RoomStore::saveRoom($room);
+        echo json_encode(['ok' => true]);
+        break;
+
+    case 'set_prediction':
+        $body = json_decode(file_get_contents('php://input') ?: '[]', true);
+        if (!is_array($body)) {
+            $body = [];
+        }
+        $roomId = is_string($body['roomId'] ?? null) ? $body['roomId'] : '';
+        $token = is_string($body['token'] ?? null) ? $body['token'] : '';
+        $pick = $body['pick'] ?? null;
+        if (RoomStore::getRoom($roomId) === null) {
+            http_response_code(404);
+            echo json_encode([
+                'error' => ['code' => 'room_not_found', 'message' => 'No such room.'],
+            ]);
+            break;
+        }
+        // Identity, the lobby gate and the pick are judged inside one locked
+        // read-modify-write (review C1): a wager can never land on a document
+        // the start has already moved on.
+        $err = null;
+        $room = RoomStore::mutate('rooms', $roomId, function (array $doc) use ($token, $pick, &$err): ?array {
+            $self = null;
+            foreach ($doc['participants'] as $idx => $p) {
+                if ($p['token'] === $token) {
+                    $self = $idx;
+                    break;
+                }
+            }
+            if ($self === null) {
+                $err = ['status' => 403, 'code' => 'not_a_participant', 'message' => 'Thou art not of this room.'];
+                return null;
+            }
+            if ($doc['status'] !== 'lobby') {
+                $err = ['status' => 409, 'code' => 'race_started', 'message' => 'The wagers are sealed — the race hath begun.'];
+                return null;
+            }
+            $lanes = [];
+            foreach ($doc['participants'] as $p) {
+                if ($p['role'] === 'racer') {
+                    $lanes[] = $p['lane'];
+                }
+            }
+            if (!is_int($pick) || !in_array($pick, $lanes, true)) {
+                $err = ['status' => 400, 'code' => 'bad_request', 'message' => 'Back one of the racers upon the track.'];
+                return null;
+            }
+            $doc['participants'][$self]['prediction'] = $pick;
+            $doc['updatedAt'] = date(DATE_ATOM);
+            return $doc;
+        });
+        if ($err !== null) {
+            http_response_code($err['status']);
+            echo json_encode([
+                'error' => ['code' => $err['code'], 'message' => $err['message']],
+            ]);
+            break;
+        }
+        if ($room === null) {
+            http_response_code(500);
+            echo json_encode([
+                'error' => ['code' => 'storage_error', 'message' => 'The scroll would not unroll.'],
+            ]);
+            break;
+        }
         echo json_encode(['ok' => true]);
         break;
 

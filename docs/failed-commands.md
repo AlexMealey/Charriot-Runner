@@ -8,6 +8,8 @@ inside Docker; the editing environment has neither a host PHP CLI nor Docker.
 | `php …` (host CLI: `php -l`, `php -r`, …) | exit 127: `php: not found`  | No PHP on the host PATH.                   |
 | `docker …`, `docker compose …`      | tool call is rejected outright  | Docker is unavailable at this stage of work. |
 | Any tool call issued in a parallel batch that contains an empty/malformed call | `tool input was not fully received` | The whole batch is rejected while one call is missing required args (e.g. `read_file` without `path`). |
+| `grep` as part of a parallel batch (4×) | `tool input was not fully received` | Each batch carried a phantom empty `grep`; details in `docs/tool-errors.md`. |
+| `grep` / ranged `read_file` (2026-10-10, repeated) | `Error parsing input JSON: EOF while parsing a value` | Payload truncated mid-argument; stop after two strikes, read whole files path-only (`docs/tool-errors.md`). |
 
 ## Tool-call errors (agent-side)
 

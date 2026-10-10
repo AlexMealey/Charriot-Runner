@@ -422,7 +422,7 @@ input[type="range"] {
     0 0 18px rgba(201, 164, 92, 0.45);
 }
 
-/* ---- lobby: start-race button (unwired until Stage 4) ---- */
+/* ---- lobby: the host's start-race button ---- */
 .trumpet {
   max-width: 100%;
   padding: 12px 20px;

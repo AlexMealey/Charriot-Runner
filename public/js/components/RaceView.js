@@ -59,6 +59,7 @@ function RaceView(props) {
         tick: curr.tick,
         t: curr.t,
         n: curr.n,
+        names: curr.names,
         finished: curr.finished,
         placements: curr.placements,
         racers: curr.racers.map(function (rc, i) {
@@ -105,9 +106,11 @@ function RaceView(props) {
     }
 
     function poll() {
-      fetch("api/?action=practice_state&race=" + encodeURIComponent(idRef.current), {
-        cache: "no-store",
-      })
+      // Rooms ride room_state (250 ms, step 4.4); practice keeps its own feed.
+      const url = props.roomId
+        ? "api/?action=room_state&room=" + encodeURIComponent(props.roomId)
+        : "api/?action=practice_state&race=" + encodeURIComponent(idRef.current);
+      fetch(url, { cache: "no-store" })
         .then(function (res) {
           if (res.status === 404) {
             doneRef.current = true;
@@ -118,7 +121,14 @@ function RaceView(props) {
         })
         .then(function (data) {
           if (!aliveRef.current || !data) return;
-          accept(data);
+          if (props.roomId) {
+            // The race snapshot rides beside `names` (nicknames by lane).
+            if (data.race) {
+              accept(Object.assign({}, data.race, { names: data.names }));
+            }
+          } else {
+            accept(data);
+          }
           if (!doneRef.current) timerRef.current = setTimeout(poll, 250);
         })
         .catch(function () {
@@ -131,7 +141,13 @@ function RaceView(props) {
 
     // An id from the landing or localStorage starts polling at once;
     // without one, open a fresh practice race and keep its id + snapshot.
+    // A room rides room_state (step 4.4) — never summon a practice race
+    // on its behalf.
     function begin() {
+      if (props.roomId) {
+        poll();
+        return;
+      }
       if (idRef.current) {
         poll();
         return;
