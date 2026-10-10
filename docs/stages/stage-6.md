@@ -80,9 +80,28 @@ follow-up stage created after 6.4.
   exactly — classic races never change.
 - **Cosmetics** (name, horse/chariot color) attach to the same record —
   layout only, no stat effect.
-- **Fairness knob**: whether custom stats are legal in competitive rooms
-  from day one, or first restricted to practice/custom mode (Q8) — the mode
-  flag below covers both.
+- **Custom Horses**
+  - The user picks the horse as a drop down on the prep page as people load in and then click ready, for the host to click 'play'
+
+Horse is the options
+Canter is the average regular speed, 
+Turning is its speed in corners, 
+Gallop is its speed along long straights, 
+stamina is for how long it can maintain gallop for
+
+| Horse | Canter | Turning | Gallop | Stamina |
+|-------|--------|---------|--------|---------|
+| Zebra | Slow | Normal | Fast | 150 |
+| Fiery Tail | Fast | Fast | Fast | 100 |
+| Thundercloud | Fast | Fast | Normal | 150 |
+| Blazing | Fast | Normal | Fast | 100 |
+| Brunellus | Fast | Normal | Fast | 100 |
+| Purebred Bay | Normal | Normal | Normal | 150 |
+| Night Charger | Fast | Normal | Fast | 100 |
+| Sirocco | Slow | Normal | Normal | 150 |
+| Purebred Bay Mare | Slow | Normal | Normal | 150 |
+| Shadow | Slow | Normal | Fast | 100 |
+| Phantom | Fast | Normal | Normal | 150 |
 
 ### Reserved: interactive abilities (the future option/alternative mode)
 

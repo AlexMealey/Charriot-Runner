@@ -21,6 +21,12 @@ function RaceView(props) {
   const [label, setLabel] = useState("Summoning the chariots…");
 
   useEffect(function () {
+    /* Smoothing (4.10): the race view relaxes the 250 ms lock to ~500 ms —
+     * hidden tabs still throttle timers to ~1 s — and the frame loop below
+     * keeps the picture gliding in between the polls. */
+    const POLL_MS = 500;
+    const LAG_MS = 500; // the picture runs one poll behind the newest tick
+    const SNAP_MS = 1500; // a gap this long is a jump: snap, never ease it
     const canvas = canvasRef.current;
     const ctx = canvas.getContext("2d");
     function resize() {
@@ -43,17 +49,28 @@ function RaceView(props) {
         draw(ctx, window.innerWidth, window.innerHeight, trackRef.current, raceRef.current);
       });
     }
-    /* Positions come only from practice_state polls: keep the last two
-     * snapshots and lerp racers[].p between them every frame. */
+    /* Positions come only from state polls (spec §3): the two newest
+     * snapshots form a segment on the arrival-time axis, and the frame
+     * loop plays it back one poll behind real time — easing between the
+     * two snapshots, gliding on the last velocity while the next is late,
+     * and never past the line before the ticks record it. Labels and
+     * placements ride the ticks unchanged: smoothing moves pictures,
+     * never standings. */
     function viewState() {
       const curr = currRef.current;
       if (!curr) return null;
       const prev = prevRef.current || curr;
-      const span = timeRef.current.curr - timeRef.current.prev;
-      let frac = 1;
-      if (span > 0) {
-        frac = Math.min(1, Math.max(0, (performance.now() - timeRef.current.prev) / span));
-      }
+      const span = Math.max(
+        timeRef.current.curr - timeRef.current.prev,
+        LAG_MS
+      );
+      // one poll behind, gliding at most one poll past the newest
+      // snapshot — then the picture holds for the next one
+      const shown = Math.min(
+        performance.now() - LAG_MS,
+        timeRef.current.curr + LAG_MS
+      );
+      const frac = Math.max(0, (shown - timeRef.current.prev) / span);
       fracRef.current = frac;
       return {
         tick: curr.tick,
@@ -64,9 +81,13 @@ function RaceView(props) {
         placements: curr.placements,
         racers: curr.racers.map(function (rc, i) {
           const before = prev.racers[i] || rc;
+          let p = before.p + (rc.p - before.p) * frac; // frac > 1 glides on
+          // a winner glides no further than the line the ticks record,
+          // and no chariot wraps the loop before the server says done
+          p = rc.done ? Math.min(p, rc.p) : Math.min(p, 1);
           return {
             lane: rc.lane,
-            p: before.p + (rc.p - before.p) * frac,
+            p: p,
             done: rc.done,
             place: rc.place,
           };
@@ -89,10 +110,16 @@ function RaceView(props) {
 
     function accept(data) {
       const had = currRef.current;
-      prevRef.current = had;
-      currRef.current = data;
       const now = performance.now();
-      timeRef.current = { prev: had ? timeRef.current.curr : now, curr: now };
+      // A snapshot that jumps — a wavered link, a backoff, a reconnect —
+      // snaps the picture to server truth instead of easing across the gap.
+      const jumped =
+        !had || data.tick < had.tick || now - timeRef.current.curr > SNAP_MS;
+      prevRef.current = jumped ? data : had;
+      currRef.current = data;
+      timeRef.current = jumped
+        ? { prev: now, curr: now }
+        : { prev: timeRef.current.curr, curr: now };
       if (data.n && data.n !== nRef.current) {
         nRef.current = data.n;
         trackRef.current = buildTrack(window.innerWidth, window.innerHeight, nRef.current);
@@ -106,21 +133,26 @@ function RaceView(props) {
     }
 
     function poll() {
-      // Rooms ride room_state (250 ms, step 4.4); practice keeps its own feed.
+      // Rooms ride room_state (step 4.4); practice keeps its own feed —
+      // both at the relaxed race-view rate (4.10).
       const url = props.roomId
         ? "api/?action=room_state&room=" + encodeURIComponent(props.roomId)
         : "api/?action=practice_state&race=" + encodeURIComponent(idRef.current);
       fetch(url, { cache: "no-store" })
         .then(function (res) {
           if (res.status === 404) {
+            waver(true); // the link itself answered
             doneRef.current = true;
             setLabel("This scroll hath turned to dust");
             return null;
           }
-          return res.ok ? res.json() : null;
+          // a refusal rides the failure path below, and polls on
+          if (!res.ok) throw new Error("poll " + res.status);
+          return res.json();
         })
         .then(function (data) {
           if (!aliveRef.current || !data) return;
+          waver(true);
           if (props.roomId) {
             // The race snapshot rides beside `names` (nicknames by lane).
             if (data.race) {
@@ -129,12 +161,13 @@ function RaceView(props) {
           } else {
             accept(data);
           }
-          if (!doneRef.current) timerRef.current = setTimeout(poll, 250);
+          if (!doneRef.current) timerRef.current = setTimeout(poll, POLL_MS);
         })
         .catch(function () {
-          // a wavered link simply polls again (the notice arrives in 4.8)
+          // a wavered link simply polls again (the notice shows it)
+          waver(false);
           if (aliveRef.current && !doneRef.current) {
-            timerRef.current = setTimeout(poll, 250);
+            timerRef.current = setTimeout(poll, POLL_MS);
           }
         });
     }

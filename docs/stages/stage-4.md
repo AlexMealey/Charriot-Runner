@@ -1,6 +1,6 @@
 # Stage 4 — Multiplayer race + predictions
 
-Status: in progress — 4.1–4.6 done, acceptance pending
+Status: in progress — 4.1–4.8 done, acceptance pending
 Goal: the host starts one server-authoritative race that every client sees
 identically; players back a winner beforehand.
 
@@ -12,10 +12,10 @@ Progress (see steps below; checked = done and reviewed):
 - [x] 4.4 Shared race view
 - [x] 4.5 Late join & reload
 - [x] 4.6 Action `set_prediction`
-- [ ] 4.7 Prediction picker in the lobby
-- [ ] 4.8 Wavering-connection notice
-- [ ] 4.9 Player identity cache → rejoin as the same player
-- [ ] 4.10 Frontend animation smoothing
+- [x] 4.7 Prediction picker in the lobby
+- [x] 4.8 Wavering-connection notice
+- [x] 4.9 Player identity cache → rejoin as the same player
+- [x] 4.10 Frontend animation smoothing
 
 Files in play (touch nothing else):
 
@@ -85,10 +85,14 @@ Done when: polls after the start can no longer change a prediction.
 
 ### 4.7 Prediction picker in the lobby
 
-List of racer nicknames as one-select choices + heading *"Back the winner"*;
-sends `set_prediction` on change; shows thy pick as *"thou backest: X"*. The
-whole block disappears (or greys out) once the race starts.
-Done when: two browsers see each other's picks via the roster poll.
+Every soul in the lobby may back a winner — spectators too, no lane needed
+(4.6 already accepts their wagers): the one-select choices are the riders
+among the players who joined the lobby, shown as racer nicknames under the
+heading *"Back the winner"*; sends `set_prediction` on change; shows thy
+pick as *"thou backest: X"*. The whole block disappears (or greys out) once
+the race starts.
+Done when: a rider and a spectator on two browsers each see their own pick
+reflected, and the roster poll shows both.
 
 ### 4.8 Wavering-connection notice
 

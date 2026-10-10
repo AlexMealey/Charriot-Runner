@@ -10,9 +10,26 @@ function Lobby(props) {
   const [snap, setSnap] = useState(props.session.snapshot);
   const isHost = !!localStorage.getItem("chariot.host." + props.roomId);
   const url = window.location.origin + "/?room=" + props.roomId;
-  const racers = snap.participants.filter(function (p) {
+  // Thine own wager as the roster poll last carried it (4.7): the radio
+  // moves at once on click, and every poll — or a refusal — reconciles it.
+  const me = snap.participants.find(function (p) {
+    return p.id === props.session.participantId;
+  });
+  const myPick = me ? me.prediction : null;
+  const [pick, setPick] = useState(myPick);
+  useEffect(function () {
+    setPick(myPick);
+  }, [myPick]);
+  const riders = snap.participants.filter(function (p) {
     return p.role === "racer";
-  }).length;
+  });
+  const racers = riders.length;
+  const backed =
+    pick === null
+      ? null
+      : riders.find(function (p) {
+          return p.lane === pick;
+        });
   const canStart = isHost && racers >= 2;
   // Which reason a disabled trumpet shows: role first, then the count.
   const reason = !isHost
@@ -90,6 +107,21 @@ function Lobby(props) {
       });
   }
 
+  /* Backing a rider calls set_prediction at once (4.6); the roster poll
+   * then carries the pick to every other soul — a refusal rolls it back. */
+  function backWinner(lane) {
+    setPick(lane);
+    setNotice("");
+    api("set_prediction", {
+      roomId: props.roomId,
+      token: props.session.token,
+      pick: lane,
+    }).catch(function (err) {
+      setPick(myPick);
+      setNotice(err.message);
+    });
+  }
+
   // Racing elsewhere (or already run): this lobby is over — hand over to
   // the shared race view.
   if (snap.status !== "lobby") {
@@ -138,6 +170,37 @@ function Lobby(props) {
             );
           })}
         </ul>
+        {riders.length ? (
+          <div className="backing">
+            <h2>Back the winner</h2>
+            <ul className="picks">
+              {riders.map(function (p) {
+                return (
+                  <li key={p.id}>
+                    <label>
+                      <input
+                        type="radio"
+                        name="prediction"
+                        checked={pick === p.lane}
+                        onChange={function () {
+                          backWinner(p.lane);
+                        }}
+                      />
+                      <span
+                        className="swatch"
+                        style={{ background: RACERS[p.lane].color }}
+                      />
+                      <span className="nick">{p.nickname}</span>
+                    </label>
+                  </li>
+                );
+              })}
+            </ul>
+            {backed ? (
+              <p className="backed">thou backest: {backed.nickname}</p>
+            ) : null}
+          </div>
+        ) : null}
         {notice ? <p className="notice">{notice}</p> : null}
         <div className="menu">
           <button

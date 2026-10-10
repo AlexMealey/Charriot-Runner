@@ -39,6 +39,8 @@ number of participants (2–8), running on the same backend simulation.
 | Host verification | **No host PHP CLI and no Docker in the editing sandbox.** Stages cannot run `php` or `docker` (see `docs/failed-commands.md`) — code is verified by review; the user runs the app in Docker. |
 | Race export | **Deferred** as a core requirement. A reference exporter implementation will be provided later to mimic (still no Node/npm) — see §7. |
 
+*Note (4.10): the race view relaxes the 250 ms lock — it polls at ~500 ms and eases the picture between snapshots (hidden-tab ≈ 1 s kept).*
+
 Assumptions flagged (say so if wrong):
 
 - *Bets* are bragging-rights only: each participant predicts the winner before
@@ -157,7 +159,7 @@ out. Errors: HTTP status + `{ "error": { "code": "room_not_found", "message": "�
 | Action | Method | Body / params | Returns | Notes |
 | --- | --- | --- | --- | --- |
 | `create_room` | POST | `{maxRacers, maxJoiners}` | `{roomId, hostToken, joinUrl}` | Host = creator. |
-| `join_room` | POST | `{roomId, nickname}` | `{participantId, token, role, snapshot}` | 404 unknown/expired; 409 full. Role = `racer` while slots remain, else `spectator`. |
+| `join_room` | POST | `{roomId, nickname, participantId?, token?}` | `{participantId, token, role, snapshot}` | 404 unknown/expired; 409 full. Role = `racer` while slots remain, else `spectator`. Optional cached `{participantId, token}` (4.9) re-attaches a player who quit (`left` row): same id/name/wager, seat re-claimed — their lane back if free, else the lowest free racer lane, else spectator; a stale identity falls through to a normal join. |
 | `leave_room` | POST | `{roomId, token}` | `{ok}` | Racer slots free up before start. |
 | `room_state` | GET | `room`, `tick`, `token` | snapshot `{status, tick, participants, race?, history?}` | Poll every 250 ms. `tick` optional → delta of new ticks. |
 | `start_race` | POST | `{roomId, hostToken}` | `{ok}` | 403 non-host; 409 &lt;2 racers or already racing. Creates seed, `status: "racing"`. |
@@ -173,6 +175,10 @@ projection of the stored engine doc; `seed`, `prngState` and the rest of the
 sim state never leave the server (§9). `start_race` stores `seed` (opaque
 base64, §4), `startedAt` and `finishedAt: null`; `raceNo` is left for
 `rematch` to bump.
+
+Note (4.7): snapshot `participants` also carry `prediction` (a racer lane or
+`null`) alongside `id`, `nickname`, `role`, `lane` — the lobby picker reads
+and shows wagers straight off the roster poll, so no separate fetch exists.
 
 Note (4.2): while `status: "racing"`, every `room_state` poll catches the
 sim up to *now* (fixed 60 Hz steps, at most 900 per poll), appends the new

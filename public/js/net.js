@@ -27,6 +27,15 @@ async function api(action, body) {
   return data;
 }
 
+/* The wavering-link line (4.8): two consecutive failed polls raise a dim
+ * notice, the next answer lowers it. Counted here so every short-poller
+ * reports one shared link — the notice itself is pure CSS (body.waver). */
+let waverMisses = 0;
+function waver(ok) {
+  waverMisses = ok ? 0 : waverMisses + 1;
+  document.body.classList.toggle("waver", waverMisses >= 2);
+}
+
 /* Tiny shared short-poller: fetch `url` every `intervalMs`, hand the
  * decoded JSON to `onData`, and stop (returned) on unmount — the same
  * shape as the Stage 1 practice polling. Non-OK answers are skipped. */
@@ -40,11 +49,13 @@ function poll(url, intervalMs, onData) {
       })
       .then(function (data) {
         if (!alive) return;
+        waver(!!data); // a non-OK answer counts as a missed poll
         if (data) onData(data);
         timer = setTimeout(tick, intervalMs);
       })
       .catch(function () {
         // a wavered link simply polls again
+        waver(false);
         if (alive) timer = setTimeout(tick, intervalMs);
       });
   }

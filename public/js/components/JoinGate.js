@@ -10,14 +10,16 @@ function JoinGate(props) {
   const [lost, setLost] = useState(false);
   const [session, setSession] = useState(null);
 
-  // Reload keeps thy identity: the cached join (step 3.6) is re-checked
-  // against the live roster and lifted straight back in — to the lobby, or
-  // to the race view when the contest has already started (step 4.5).
+  // Thine identity survives the quitting (step 4.9): the kept id+token is
+  // offered to join_room first — a match re-attaches the same player (name
+  // and wager kept, no second roster row) — and only when no scroll is kept
+  // do the heralds ask for a name, the cached one already written in it.
   useEffect(function () {
     let alive = true;
+    const key = "chariot.player." + props.roomId;
     let raw = null;
     try {
-      raw = localStorage.getItem("chariot.player." + props.roomId);
+      raw = localStorage.getItem(key);
     } catch (e) {
       raw = null;
     }
@@ -28,32 +30,62 @@ function JoinGate(props) {
     } catch (e) {
       cached = null;
     }
-    if (!cached || !cached.participantId) {
-      localStorage.removeItem("chariot.player." + props.roomId);
+    if (!cached || !cached.participantId || !cached.token) {
+      localStorage.removeItem(key);
       return function () { alive = false; };
     }
-    fetch("api/?action=room_state&room=" + encodeURIComponent(props.roomId))
-      .then(function (res) { return res.ok ? res.json() : null; })
-      .then(function (snap) {
-        if (!alive || !snap || !Array.isArray(snap.participants)) return;
-        const mine = snap.participants.some(function (p) {
-          return p.id === cached.participantId;
-        });
-        if (mine) {
-          setSession({
-            participantId: cached.participantId,
-            token: cached.token,
-            role: cached.role,
-            snapshot: snap,
-          });
-        } else {
-          // gone from the roster (left, or room expired mid-join)
-          localStorage.removeItem("chariot.player." + props.roomId);
-        }
+    const nick = typeof cached.nickname === "string" ? cached.nickname : "";
+    if (nick) setNickname(nick);
+    api("join_room", {
+      roomId: props.roomId,
+      nickname: nick || wordName(),
+      participantId: cached.participantId,
+      token: cached.token,
+    })
+      .then(function (data) {
+        if (!alive) return;
+        cacheSession(data);
+        setSession(data);
       })
-      .catch(function () { /* wavering link: the join form simply stays */ });
+      .catch(function (err) {
+        if (!alive) return;
+        if (err.code === "room_not_found") {
+          localStorage.removeItem(key);
+          setLost(true);
+          return;
+        }
+        // a full room or a wavering link: the heralds ask, name pre-filled
+        if (err.message) setNotice(err.message);
+      });
     return function () { alive = false; };
   }, [props.roomId]);
+
+  /* The kept identity (steps 3.6/4.9): id, token, role, and the name the
+   * roster actually shows — a re-attach keeps the stored one. */
+  function cacheSession(data) {
+    let nick = nickname;
+    (data.snapshot.participants || []).some(function (p) {
+      if (p.id === data.participantId) {
+        nick = p.nickname;
+        return true;
+      }
+      return false;
+    });
+    try {
+      localStorage.setItem(
+        "chariot.player." + props.roomId,
+        JSON.stringify({
+          participantId: data.participantId,
+          token: data.token,
+          role: data.role,
+          nickname: nick,
+          snapshot: data.snapshot,
+        })
+      );
+    } catch (e) {
+      /* a full chest keeps no scroll */
+    }
+  }
 
   if (lost) return <DustScroll navigate={props.navigate} />;
 
@@ -74,14 +106,24 @@ function JoinGate(props) {
     }
     setBusy(true);
     setNotice("");
-    api("join_room", { roomId: props.roomId, nickname: name })
+    // The cached identity rides along (4.9): a still-known player is
+    // re-attached rather than inscribed twice; a stale one falls through.
+    let cached = null;
+    try {
+      cached = JSON.parse(localStorage.getItem("chariot.player." + props.roomId));
+    } catch (e) {
+      cached = null;
+    }
+    api("join_room", {
+      roomId: props.roomId,
+      nickname: name,
+      participantId: cached ? cached.participantId : "",
+      token: cached ? cached.token : "",
+    })
       .then(function (data) {
         setBusy(false);
         setSession(data);
-        localStorage.setItem(
-          "chariot.player." + props.roomId,
-          JSON.stringify(data)
-        );
+        cacheSession(data);
       })
       .catch(function (err) {
         setBusy(false);

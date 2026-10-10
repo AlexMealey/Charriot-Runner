@@ -25,11 +25,18 @@ function roomSnapshot(array $room): array
 {
     $participants = [];
     foreach ($room['participants'] as $p) {
+        // A quitter's row stays behind for a later re-join (4.9) but holds
+        // no seat: the roster — and every count built on it — ignores it.
+        if (!empty($p['left'])) {
+            continue;
+        }
         $participants[] = [
             'id' => $p['id'],
             'nickname' => $p['nickname'],
             'role' => $p['role'],
             'lane' => $p['lane'],
+            // The lobby picker reads picks back off the roster poll (4.7).
+            'prediction' => $p['prediction'] ?? null,
         ];
     }
 
@@ -222,6 +229,9 @@ switch ($action) {
         $roomId = is_string($body['roomId'] ?? null) ? $body['roomId'] : '';
         $nickname = is_string($body['nickname'] ?? null) ? trim($body['nickname']) : '';
         $nickname = mb_substr($nickname, 0, 24);
+        // Optional cached identity (4.9): a quitter's kept id+token.
+        $participantId = is_string($body['participantId'] ?? null) ? $body['participantId'] : '';
+        $token = is_string($body['token'] ?? null) ? $body['token'] : '';
         if ($nickname === '') {
             http_response_code(400);
             echo json_encode([
@@ -237,7 +247,61 @@ switch ($action) {
             ]);
             break;
         }
-        if (count($room['participants']) >= $room['config']['maxJoiners']) {
+        // A cached identity (4.9): quitting only flags the row `left`, so a
+        // matching id+token re-attaches the same player — name, wager and
+        // id kept, no second roster row.
+        $re = null;
+        foreach ($room['participants'] as $i => $p) {
+            if ($p['id'] === $participantId && $p['token'] === $token) {
+                $re = $i;
+                break;
+            }
+        }
+        if ($re !== null) {
+            $me = $room['participants'][$re];
+            // The seat is re-claimed as a fresh join claims it (spec §11):
+            // their own racer lane back while it stands free, else the
+            // lowest open one, else spectator.
+            $taken = [];
+            foreach ($room['participants'] as $j => $p) {
+                if ($j !== $re && empty($p['left']) && $p['role'] === 'racer') {
+                    $taken[] = $p['lane'];
+                }
+            }
+            if ($me['role'] === 'racer' && count($taken) < $room['config']['maxRacers']) {
+                $role = 'racer';
+                $lane = $me['lane'];
+                if (in_array($lane, $taken, true)) {
+                    $lane = 0;
+                    while (in_array($lane, $taken, true)) {
+                        $lane++;
+                    }
+                }
+            } else {
+                $role = 'spectator';
+                $lane = null;
+            }
+            $room['participants'][$re]['role'] = $role;
+            $room['participants'][$re]['lane'] = $lane;
+            unset($room['participants'][$re]['left']);
+            $room['updatedAt'] = date(DATE_ATOM);
+            RoomStore::saveRoom($room);
+            echo json_encode([
+                'participantId' => $me['id'],
+                'token' => $me['token'],
+                'role' => $role,
+                'snapshot' => roomSnapshot($room),
+            ]);
+            break;
+        }
+        // Left rows hold no seat (4.9), so a quit one frees a seat too.
+        $seats = 0;
+        foreach ($room['participants'] as $p) {
+            if (empty($p['left'])) {
+                $seats++;
+            }
+        }
+        if ($seats >= $room['config']['maxJoiners']) {
             http_response_code(409);
             echo json_encode([
                 'error' => ['code' => 'room_full', 'message' => 'Every seat in this room is taken.'],
@@ -248,7 +312,7 @@ switch ($action) {
         // lowest open one; past the cap (or after the start) one spectates.
         $taken = [];
         foreach ($room['participants'] as $p) {
-            if ($p['role'] === 'racer') {
+            if ($p['role'] === 'racer' && empty($p['left'])) {
                 $taken[] = $p['lane'];
             }
         }
@@ -330,7 +394,10 @@ switch ($action) {
         $left = null;
         foreach ($room['participants'] as $i => $p) {
             if ($p['token'] === $token) {
-                unset($room['participants'][$i]); // a racer lane frees up
+                // The row survives the quitting (4.9): only flagged, so a
+                // kept id+token can re-attach the player later. Counts
+                // ignore it — a racer lane frees up (3.5).
+                $room['participants'][$i]['left'] = true;
                 $left = $p;
                 break;
             }
@@ -342,7 +409,6 @@ switch ($action) {
             ]);
             break;
         }
-        $room['participants'] = array_values($room['participants']);
         $room['updatedAt'] = date(DATE_ATOM);
         RoomStore::saveRoom($room);
         echo json_encode(['ok' => true]);
@@ -381,7 +447,7 @@ switch ($action) {
         // an early leave leaves no gap under the engine's lanes.
         $riders = [];
         foreach ($room['participants'] as $i => $p) {
-            if ($p['role'] === 'racer') {
+            if ($p['role'] === 'racer' && empty($p['left'])) {
                 $riders[$i] = $p['lane'];
             }
         }
@@ -446,7 +512,7 @@ switch ($action) {
             }
             $lanes = [];
             foreach ($doc['participants'] as $p) {
-                if ($p['role'] === 'racer') {
+                if ($p['role'] === 'racer' && empty($p['left'])) {
                     $lanes[] = $p['lane'];
                 }
             }
