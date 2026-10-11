@@ -28,7 +28,14 @@ Then open http://localhost:1227
   - `components/` — React views: `RaceView.js`, `Landing.js`, `JoinGate.js`,
     `Lobby.js`, `DustScroll.js`
   - `app.js` — router shell and mount
-- `api/index.php` — lite JSON API (`?action=hello|health|echo`)
+- `api/index.php` — JSON API front controller (dispatch on `?action=`)
+- `api/actions/` — one handler per action: `hello`, `health`, `echo`, `seed`,
+  the room actions (`create_room`, `join_room`, `room_state`, `leave_room`,
+  `start_race`, `rematch`, `set_prediction`) and the practice actions
+  (`create_practice`, `practice_state`)
+- `api/lib/` — server code: `RaceEngine.php` (sim), `RoomStore.php` (JSON file
+  store), `Http.php` (body parsing + error envelope), `Snapshots.php`
+  (client views + race catch-up)
 - `docker/vhost.conf` — Apache vhost (static frontend + PHP API)
 - `Dockerfile` / `docker-compose.yml` — deployment
 
