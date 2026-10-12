@@ -32,11 +32,63 @@ function Lobby(props) {
       : riders.find(function (p) {
           return p.lane === pick;
         });
-  const canStart = isHost && racers >= 2;
-  // Which reason a disabled trumpet shows: role first, then the count.
+  // Horses rooms (8.4/8.5): each rider's steed and readiness, and the
+  // trumpet's grace — counted on the server, carried by every poll.
+  const custom = (snap.config.mode || "classic") === "custom";
+  const allReady = riders.every(function (p) {
+    return p.ready;
+  });
+  const graceLeft = snap.trumpetLeft === undefined ? null : snap.trumpetLeft;
+  const waiting = custom && !allReady && graceLeft !== null && graceLeft > 0;
+  const forceable = custom && !allReady && graceLeft !== null && graceLeft <= 0;
+  const canStart = isHost && racers >= 2 && !waiting;
+  // Which reason a disabled trumpet shows: role first, then the count
+  // (a running grace speaks for itself in the line above the trumpet).
   const reason = !isHost
     ? "the host alone may call the race"
-    : "two riders at least";
+    : racers < 2
+    ? "two riders at least"
+    : null;
+  const graceNote = waiting
+    ? "The trumpet hath sounded — " + Math.ceil(graceLeft) + " s to make ready"
+    : forceable
+    ? isHost
+      ? "The grace is spent — thou mayest start regardless"
+      : "The grace is spent — the host may start regardless"
+    : custom && isHost && !allReady && racers >= 2
+    ? "Not every rider is ready — the trumpet grants them 30 s"
+    : null;
+  // Thine own steed and readiness, moved at once on click and reconciled
+  // by every poll — or rolled back by a refusal (as the wager is).
+  const myHorse = me ? me.horse : null;
+  const myReady = me ? !!me.ready : false;
+  const [steed, setSteed] = useState(myHorse);
+  useEffect(function () {
+    setSteed(myHorse);
+  }, [myHorse]);
+  const [readyNow, setReadyNow] = useState(myReady);
+  useEffect(function () {
+    setReadyNow(myReady);
+  }, [myReady]);
+  // The stables (8.2): names and stats straight from the server's roster.
+  const [stable, setStable] = useState([]);
+  useEffect(function () {
+    if (!custom) return;
+    let alive = true;
+    fetch("api/?action=horses")
+      .then(function (res) {
+        return res.ok ? res.json() : null;
+      })
+      .then(function (data) {
+        if (alive && data && data.horses) setStable(data.horses);
+      })
+      .catch(function () {
+        /* no roster: Random still rides */
+      });
+    return function () {
+      alive = false;
+    };
+  }, [custom]);
 
   // Live roster: joins and leaves land in every browser within 250 ms.
   // Once the race is on, the lobby stops polling — the race view takes over.
@@ -108,6 +160,8 @@ function Lobby(props) {
     api("start_race", {
       roomId: props.roomId,
       hostToken: localStorage.getItem("chariot.host." + props.roomId),
+      // once the grace is spent the host starts regardless (8.5)
+      force: forceable,
     })
       .then(function () {
         // stay busy: the race is begun, and the next roster poll carries
@@ -131,6 +185,36 @@ function Lobby(props) {
       pick: lane,
     }).catch(function (err) {
       setPick(myPick);
+      setNotice(err.message);
+    });
+  }
+
+  /* Choosing a steed (8.4): "" from the select means Random (null). */
+  function chooseSteed(value) {
+    const horse = value || null;
+    setSteed(horse);
+    setNotice("");
+    api("set_horse", {
+      roomId: props.roomId,
+      token: props.session.token,
+      horse: horse,
+    }).catch(function (err) {
+      setSteed(myHorse);
+      setNotice(err.message);
+    });
+  }
+
+  /* Ready locks the steed; standing down unlocks it (8.4). */
+  function toggleReady() {
+    const next = !readyNow;
+    setReadyNow(next);
+    setNotice("");
+    api("set_ready", {
+      roomId: props.roomId,
+      token: props.session.token,
+      ready: next,
+    }).catch(function (err) {
+      setReadyNow(myReady);
       setNotice(err.message);
     });
   }
@@ -175,6 +259,12 @@ function Lobby(props) {
                   }}
                 />
                 <span className="nick">{p.nickname}</span>
+                {custom && p.role === "racer" ? (
+                  <span className="steed">
+                    {p.horse ? horseName(p.horse) : "Random"}
+                    {p.ready ? <span className="readymark"> ✓</span> : null}
+                  </span>
+                ) : null}
                 <span className="role">
                   {p.role === "racer" ? "rider" : "onlooker"}
                 </span>
@@ -185,6 +275,36 @@ function Lobby(props) {
             );
           })}
         </ul>
+        {custom && me && me.role === "racer" ? (
+          <div className="steedpick">
+            <h2>Thy steed</h2>
+            <div className="steed-row">
+              <select
+                value={steed || ""}
+                disabled={readyNow}
+                onChange={function (e) {
+                  chooseSteed(e.target.value);
+                }}
+              >
+                <option value="">Random — the stable master chooses</option>
+                {stable.map(function (h) {
+                  return (
+                    <option key={h.slug} value={h.slug}>
+                      {h.name} — canter {h.canter} · turning {h.turning} ·
+                      gallop {h.gallop} · stamina {h.stamina}
+                    </option>
+                  );
+                })}
+              </select>
+              <button
+                className={readyNow ? "ready on" : "ready"}
+                onClick={toggleReady}
+              >
+                {readyNow ? "Ready ✓" : "Make ready"}
+              </button>
+            </div>
+          </div>
+        ) : null}
         {riders.length ? (
           <div className="backing">
             <h2>Back the winner</h2>
@@ -217,15 +337,17 @@ function Lobby(props) {
           </div>
         ) : null}
         {notice ? <p className="notice">{notice}</p> : null}
+        {graceNote ? <p className="grace">{graceNote}</p> : null}
         <div className="menu">
           <button
             className="trumpet"
             disabled={!canStart || busy}
             onClick={startRace}
           >
-            Raise the Trumpet — {racers} riders
+            {forceable ? "Start regardless" : "Raise the Trumpet"} —{" "}
+            {racers} riders
           </button>
-          {canStart ? null : <p className="reason">{reason}</p>}
+          {reason ? <p className="reason">{reason}</p> : null}
           <a className="linkish" href="/" onClick={home}>
             ◂ The Gates
           </a>

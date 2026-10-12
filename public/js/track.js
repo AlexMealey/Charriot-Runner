@@ -78,3 +78,73 @@ function stadiumPath(tr, R) {
   p.closePath();
   return p;
 }
+
+/* ------------------------ Courses (Stage 8) ------------------------- *
+ * A horses race runs on a course plotted by the server (action=track):  *
+ * evenly spaced points along its centre line. The course is scaled      *
+ * uniformly into the window — letterboxed, never stretched — and drawn  *
+ * two lanes wide whatever the field size.                               *
+ * ------------------------------------------------------------------- */
+function buildCourse(w, h, plot) {
+  const vb = String(plot.viewBox || "0 0 1000 600")
+    .split(/[\s,]+/)
+    .map(Number);
+  const top = 112; // title and lap counter
+  const bottom = 76; // legend
+  const side = 40;
+  const availW = Math.max(100, w - 2 * side);
+  const availH = Math.max(100, h - top - bottom);
+  const scale = Math.min(availW / vb[2], availH / vb[3]);
+  const ox = side + (availW - vb[2] * scale) / 2 - vb[0] * scale;
+  const oy = top + (availH - vb[3] * scale) / 2 - vb[1] * scale;
+  const pts = [];
+  for (let i = 0; i + 1 < plot.points.length; i += 2) {
+    pts.push({ x: ox + plot.points[i] * scale, y: oy + plot.points[i + 1] * scale });
+  }
+  let lapPx = 0;
+  for (let i = 1; i < pts.length; i++) {
+    lapPx += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
+  }
+  if (plot.loop && pts.length > 1) {
+    lapPx += Math.hypot(pts[0].x - pts[pts.length - 1].x, pts[0].y - pts[pts.length - 1].y);
+  }
+  const laneW = Math.max(10, Math.min(26, 22 * scale));
+  const horseH = Math.max(18, Math.min(32, laneW * 1.25));
+  const first = plot.segments && plot.segments[0];
+  return {
+    course: true,
+    pts: pts,
+    loop: !!plot.loop,
+    laneW: laneW,
+    horseH: horseH,
+    // the start grid (drawn only): each row 1.2 horse widths further back,
+    // the gap closing over the opening straight
+    gridGap: (1.2 * horseH * 0.6) / Math.max(1, lapPx),
+    closeLaps: first && first.kind === "straight" ? first.to : 0.15,
+  };
+}
+
+/* Where a horse `d` laps into the race stands (d may run past one lap or
+ * sit behind the line), shifted `off` px across the course; dx/dy is the
+ * way it runs. */
+function coursePose(c, d, off) {
+  const n = c.pts.length;
+  const span = c.loop ? n : n - 1;
+  const f = c.loop ? d - Math.floor(d) : Math.max(0, Math.min(1, d));
+  const u = f * span;
+  const i = Math.min(Math.floor(u), span - 1);
+  const t = u - i;
+  const a = c.pts[i];
+  const b = c.pts[(i + 1) % n];
+  let dx = b.x - a.x;
+  let dy = b.y - a.y;
+  const len = Math.hypot(dx, dy) || 1;
+  dx /= len;
+  dy /= len;
+  return {
+    x: a.x + (b.x - a.x) * t - dy * off,
+    y: a.y + (b.y - a.y) * t + dx * off,
+    dx: dx,
+    dy: dy,
+  };
+}

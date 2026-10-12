@@ -26,6 +26,39 @@ class RaceEngine
         "Wyvern", "Gryphon", "Hart", "Adder", "Otter", "Crow", "Wolf", "Mare",
     ];
 
+    /**
+     * Horses for horses races (Stage 8; roster rebalanced in stage-6 §6.4).
+     * Canter is the cruising speed, Turning the speed through the turns,
+     * Gallop the speed along the straights; Stamina is how many ticks of
+     * gallop the horse holds before it is blown.
+     */
+    public const HORSES = [
+        'zebra' => ['name' => 'Zebra', 'canter' => 'slow', 'turning' => 'normal', 'gallop' => 'fast', 'stamina' => 90],
+        'fiery_tail' => ['name' => 'Fiery Tail', 'canter' => 'fast', 'turning' => 'fast', 'gallop' => 'fast', 'stamina' => 40],
+        'thundercloud' => ['name' => 'Thundercloud', 'canter' => 'fast', 'turning' => 'fast', 'gallop' => 'normal', 'stamina' => 50],
+        'blazing' => ['name' => 'Blazing', 'canter' => 'normal', 'turning' => 'slow', 'gallop' => 'fast', 'stamina' => 140],
+        'brunellus' => ['name' => 'Brunellus', 'canter' => 'normal', 'turning' => 'normal', 'gallop' => 'fast', 'stamina' => 80],
+        'purebred_bay' => ['name' => 'Purebred Bay', 'canter' => 'normal', 'turning' => 'normal', 'gallop' => 'normal', 'stamina' => 150],
+        'night_charger' => ['name' => 'Night Charger', 'canter' => 'fast', 'turning' => 'normal', 'gallop' => 'fast', 'stamina' => 60],
+        'sirocco' => ['name' => 'Sirocco', 'canter' => 'slow', 'turning' => 'slow', 'gallop' => 'fast', 'stamina' => 160],
+        'purebred_bay_mare' => ['name' => 'Purebred Bay Mare', 'canter' => 'slow', 'turning' => 'normal', 'gallop' => 'normal', 'stamina' => 180],
+        'shadow' => ['name' => 'Shadow', 'canter' => 'slow', 'turning' => 'fast', 'gallop' => 'normal', 'stamina' => 100],
+        'phantom' => ['name' => 'Phantom', 'canter' => 'fast', 'turning' => 'normal', 'gallop' => 'normal', 'stamina' => 80],
+    ];
+
+    /** Horse speeds as multiples of BASE_SPEED; every gallop beats every canter. */
+    public const SPEED = [
+        'canter' => ['slow' => 0.93, 'normal' => 0.96, 'fast' => 0.99],
+        'turning' => ['slow' => 0.85, 'normal' => 0.88, 'fast' => 0.91],
+        'gallop' => ['slow' => 1.11, 'normal' => 1.15, 'fast' => 1.19],
+    ];
+
+    /** Stamina won back per tick a horse is not galloping. */
+    private const STAMINA_REGEN = 0.5;
+    /** Lane-change look-ahead in laps (≈ 1.5 horse lengths) and its hold time in ticks. */
+    private const PASS_GAP = 0.018;
+    private const SIDE_HOLD = 30;
+
     /** Fresh 32-bit PRNG state. */
     public static function prngNew(): int
     {
@@ -52,9 +85,15 @@ class RaceEngine
      * lane's rank (0 = seeded winner), then per-racer surge parameters are
      * drawn. The updated PRNG state is kept in the result so the sim stays
      * serializable, and the whole state survives a json_encode round-trip.
+     *
+     * $opts['mode'] === 'custom' builds a horses race instead (createCustom);
+     * without it this classic path is exactly as before.
      */
-    public static function create(int $prngState, int $n): array
+    public static function create(int $prngState, int $n, array $opts = []): array
     {
+        if (($opts['mode'] ?? 'classic') === 'custom') {
+            return self::createCustom($prngState, $n, $opts);
+        }
         $prng = $prngState;
 
         // Seeded Fisher-Yates shuffle (exact port of the JS loop).
@@ -102,6 +141,10 @@ class RaceEngine
      */
     public static function step(array &$state): void
     {
+        if (($state['mode'] ?? 'classic') === 'custom') {
+            self::stepCustom($state);
+            return;
+        }
         $state['tick'] += 1;
         $state['t'] += self::STEP;
 
@@ -187,6 +230,181 @@ class RaceEngine
             $a = self::NAME_A[random_int(0, count(self::NAME_A) - 1)];
             $b = self::NAME_B[random_int(0, count(self::NAME_B) - 1)];
             $out[] = $a . ' ' . $b;
+        }
+        return $out;
+    }
+
+    /* --- horses races (Stage 8, mode "custom") --------------------------- */
+
+    /**
+     * A horses race for $n riders in slot order (slots 0/1 the front row,
+     * 2/3 behind, … — the grid is drawn, never raced). $opts: `horses` (a
+     * roster slug or null = Random per slot), `track` (course slug), `laps`,
+     * `segments` (the course's straight/turn table, Tracks::load). Random
+     * horses are drawn from the PRNG here, so seed + picks + course + laps
+     * replay the same race. No seeded rank: the horses decide the order.
+     */
+    private static function createCustom(int $prngState, int $n, array $opts): array
+    {
+        $prng = $prngState;
+        $slugs = array_keys(self::HORSES);
+        $horses = [];
+        $racers = [];
+        for ($lane = 0; $lane < $n; $lane++) {
+            $slug = $opts['horses'][$lane] ?? null;
+            if (!is_string($slug) || !isset(self::HORSES[$slug])) {
+                $slug = $slugs[(int) floor(self::prngNext($prng) * count($slugs))];
+            }
+            $horses[] = $slug;
+            $racers[] = [
+                'lane' => $lane,
+                'p' => 0.0,
+                'done' => false,
+                'place' => 0,
+                'horse' => $slug,
+                'stamina' => (float) self::HORSES[$slug]['stamina'],
+                'blown' => false,
+                'side' => $lane % 2,
+                'sideTick' => -self::SIDE_HOLD,
+                'surgeAmp' => 0.1 + self::prngNext($prng) * 0.12,
+                'surgeW' => 1.2 + self::prngNext($prng) * 1.2,
+                'surgePhase' => self::prngNext($prng) * M_PI * 2,
+            ];
+        }
+        return [
+            'mode' => 'custom',
+            'tick' => 0,
+            't' => 0,
+            'prng' => $prng,
+            'n' => $n,
+            'finished' => 0,
+            'placements' => [],
+            'racers' => $racers,
+            'horses' => $horses,
+            'track' => (string) ($opts['track'] ?? ''),
+            'laps' => max(1, (int) ($opts['laps'] ?? 1)),
+            'course' => ['segments' => $opts['segments'] ?? []],
+        ];
+    }
+
+    /**
+     * One tick of a horses race. Every horse reads the same straight/turn
+     * table: Turning speed in a turn (stamina +½), Gallop on a straight while
+     * not blown and stamina lasts (−1 a tick), else Canter and blown until
+     * the next turn (stamina +½). Luck is today's seeded surge at half
+     * strength plus per-tick jitter; no rank, rubber band or hold-the-line.
+     * Same-tick finishers are placed by how far into the tick each crossed.
+     */
+    private static function stepCustom(array &$state): void
+    {
+        $state['tick'] += 1;
+        $state['t'] += self::STEP;
+        $laps = (int) $state['laps'];
+        $segments = $state['course']['segments'];
+        $finishers = [];
+        for ($i = 0, $n = count($state['racers']); $i < $n; $i++) {
+            $rc = &$state['racers'][$i];
+            if ($rc['done']) {
+                unset($rc);
+                continue;
+            }
+            $horse = self::HORSES[$rc['horse']];
+            $full = (float) $horse['stamina'];
+            if (self::inTurn($segments, fmod($rc['p'] * $laps, 1.0))) {
+                $speed = self::SPEED['turning'][$horse['turning']];
+                $rc['stamina'] = min($full, $rc['stamina'] + self::STAMINA_REGEN);
+                $rc['blown'] = false;
+            } elseif (!$rc['blown'] && $rc['stamina'] >= 1) {
+                $speed = self::SPEED['gallop'][$horse['gallop']];
+                $rc['stamina'] -= 1;
+                if ($rc['stamina'] < 1) {
+                    $rc['blown'] = true;
+                }
+            } else {
+                $speed = self::SPEED['canter'][$horse['canter']];
+                $rc['stamina'] = min($full, $rc['stamina'] + self::STAMINA_REGEN);
+                $rc['blown'] = true;
+            }
+            $surge = $rc['surgeAmp'] * sin($rc['surgePhase'] + $state['t'] * $rc['surgeW']);
+            $jitter = (self::prngNext($state['prng']) - 0.5) * 0.05;
+            $v = self::BASE_SPEED * $speed * (1 + 0.5 * $surge + $jitter);
+            $before = $rc['p'];
+            $rc['p'] += max(0.03, $v) * self::STEP / $laps;
+            if ($rc['p'] >= 1) {
+                $rc['done'] = true;
+                // how far into this tick the line was crossed: earlier wins
+                $finishers[] = [(1 - $before) / ($rc['p'] - $before), $i];
+            }
+            unset($rc);
+        }
+        sort($finishers); // by crossing fraction, then slot
+        foreach ($finishers as [, $i]) {
+            $state['finished'] += 1;
+            $state['racers'][$i]['place'] = $state['finished'];
+            $state['placements'][] = ['lane' => $state['racers'][$i]['lane'], 'place' => $state['finished']];
+        }
+        self::steerSides($state);
+    }
+
+    /** Whether lap position $u (0..1) lies in a turn of the course table. */
+    private static function inTurn(array $segments, float $u): bool
+    {
+        foreach ($segments as $seg) {
+            if ($u >= $seg['from'] && $u < $seg['to']) {
+                return $seg['kind'] === 'turn';
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Which of the course's two lanes each horse is drawn in — presentation
+     * only, never speed. Leaders first, a horse closing on another in its
+     * lane within PASS_GAP swings into the other lane when that lane is
+     * clear for the same distance; otherwise it stays and passes through.
+     * A swing holds for SIDE_HOLD ticks so no horse flickers between lanes.
+     */
+    private static function steerSides(array &$state): void
+    {
+        $laps = (int) $state['laps'];
+        $dist = [];
+        foreach ($state['racers'] as $i => $rc) {
+            if (!$rc['done']) {
+                $dist[$i] = $rc['p'] * $laps;
+            }
+        }
+        arsort($dist); // stable: ties keep slot order
+        foreach ($dist as $i => $d) {
+            $me = $state['racers'][$i];
+            if ($state['tick'] - $me['sideTick'] < self::SIDE_HOLD) {
+                continue;
+            }
+            $blocked = false;
+            $clear = true;
+            foreach ($dist as $j => $dj) {
+                if ($j === $i) {
+                    continue;
+                }
+                $gap = $dj - $d;
+                if ($state['racers'][$j]['side'] === $me['side']) {
+                    $blocked = $blocked || ($gap > 0 && $gap < self::PASS_GAP);
+                } elseif (abs($gap) < self::PASS_GAP) {
+                    $clear = false;
+                }
+            }
+            if ($blocked && $clear) {
+                $state['racers'][$i]['side'] = 1 - $me['side'];
+                $state['racers'][$i]['sideTick'] = $state['tick'];
+            }
+        }
+    }
+
+    /** The horse roster in its fixed order, as the `horses` action serves it. */
+    public static function horseRoster(): array
+    {
+        $out = [];
+        foreach (self::HORSES as $slug => $horse) {
+            $out[] = ['slug' => $slug] + $horse;
         }
         return $out;
     }

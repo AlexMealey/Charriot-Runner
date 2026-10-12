@@ -146,6 +146,14 @@ Practice rooms: `data/practice/<raceId>.json`, same `race` block, no
 participants/host/lobby (racers get generated word-names client- or
 server-side — server-side, so the export path works for practice too).
 
+Horses races (Stage 8, `config.mode: "custom"`): the stored race also
+holds `mode`, `track` (course slug), `laps`, `horses` (roster slug per
+slot) and `course.segments` (the course's straight/turn table, frozen at
+the start); each racer adds `horse`, `stamina`, `blown`, `side` and
+`sideTick`. Of these only `mode`, `track`, `laps`, `horses` and each
+racer's `side` reach clients. Riders take slots in join order; the
+room may carry `trumpetAt` while the start's 30 s grace runs.
+
 Export jobs (deferred with §7): `data/export-jobs/<jobId>.json`
 `{jobId, roomId|practiceId, raceNo, status: "queued"|"rendering"|"done"|"error", out: "exports/<jobId>.mp4", error}`.
 
@@ -186,6 +194,24 @@ tick lines to `race-<raceNo>.ticks.jsonl.gz` (§3) under one lock, and
 answers with the advanced `race` plus `names` — racer nicknames by lane.
 When all racers are done the room flips to `status: "finished"` and
 stamps `finishedAt`; later polls keep the frozen final frame.
+
+Note (Stage 8 — horses mode): `create_room` and `create_practice` take
+optional `mode` (`classic` default | `custom`), `track` (course slug,
+default `hippodrome`) and `laps` (1–3; 1 on a course that does not loop),
+stored as `config.mode` / `config.track` / `config.laps`. New GET actions:
+`tracks` → `{tracks: [{slug, name, loop}]}`; `track` (`slug`) → the course
+plot `{slug, name, loop, viewBox, d, length, turnShare, segments,
+points}` (404 `track_not_found`); `horses` → `{horses: [{slug, name,
+canter, turning, gallop, stamina}]}`. New POST actions, lobby and riders
+only: `set_horse {roomId, token, horse}` (slug or `null` = Random; 409
+`horse_locked` while ready) and `set_ready {roomId, token, ready}`.
+`start_race` in a horses room needs every rider ready, else 409
+`riders_not_ready` — the first such call starts a 30 s grace, after which
+`{force: true}` starts anyway. Snapshots: participants gain `horse` and
+`ready`; the room gains `trumpetLeft` (seconds of grace left, or `null`);
+a horses race block (and practice snapshot) adds `mode`, `track`, `laps`,
+`horses`, and its racers carry `side` (0 | 1, the lane drawn on the
+two-lane course).
 
 **Deferred with §7 (export):** `request_export` `{roomId?, practiceId?, raceNo}`
 → `{jobId}`, `export_status` `job` → `{status, url?}`, `export_download` `job`
@@ -296,8 +322,9 @@ just as importantly, what not to.
 | 3 — Rooms: create, join, lobby | [stages/stage-3.md](stages/stage-3.md) | in progress (3.1–3.2 done) |
 | 4 — Multiplayer race + predictions | [stages/stage-4.md](stages/stage-4.md) | not started |
 | 5 — Results + rematch | [stages/stage-5.md](stages/stage-5.md) | not started |
-| 6 — Custom tracks & racers (spec + questions) | [stages/stage-6.md](stages/stage-6.md) | **spec draft — open questions** |
+| 6 — Custom tracks & racers (spec + questions) | [stages/stage-6.md](stages/stage-6.md) | **decided** — implemented by Stage 8 |
 | 7 — TTL, hardening, docs | [stages/stage-7.md](stages/stage-7.md) | not started |
+| 8 — Horses mode (two-lane courses + horses) | [stages/stage-8.md](stages/stage-8.md) | not started |
 
 ---
 

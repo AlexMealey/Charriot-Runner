@@ -12,7 +12,19 @@ function action_create_practice(): void
         Http::error(400, 'bad_request', 'Chariots number 2 to 8.');
         return;
     }
-    $doc = RaceEngine::create(RaceEngine::prngNew(), $n);
+    // Rules of the race (8.9): classic, or horses — every horse drawn from
+    // the seed — on a course for 1–3 laps.
+    [$setup, $problem] = Tracks::setup($body);
+    if ($setup === null) {
+        Http::error(400, 'bad_request', $problem);
+        return;
+    }
+    $opts = [];
+    if ($setup['mode'] === 'custom') {
+        $plot = Tracks::load($setup['track']);
+        $opts = $setup + ['horses' => array_fill(0, $n, null), 'segments' => $plot['segments']];
+    }
+    $doc = RaceEngine::create(RaceEngine::prngNew(), $n, $opts);
     $doc['practiceId'] = bin2hex(random_bytes(8));
     $doc['startedAt'] = microtime(true);
     $doc['finishedAt'] = null;

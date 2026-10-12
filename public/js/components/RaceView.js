@@ -16,6 +16,9 @@ function RaceView(props) {
   const fracRef = useRef(1);
   const doneRef = useRef(false);
   const trackRef = useRef(null);
+  // a horses race's course plot (8.7), fetched once per course slug
+  const plotRef = useRef(null);
+  const plotSlugRef = useRef("");
   const restartRef = useRef(null); // the feed effect's start-over (5.4)
   const [label, setLabel] = useState("Summoning the chariots…");
   // The room's finished verdict with the standings and wagerers it carries
@@ -34,6 +37,13 @@ function RaceView(props) {
     const SNAP_MS = 1500; // a gap this long is a jump: snap, never ease it
     const canvas = canvasRef.current;
     const ctx = canvas.getContext("2d");
+    // The course to draw: a horses race's plotted course once it has
+    // arrived, else today's n-lane oval.
+    function layout(w, h) {
+      return plotRef.current
+        ? buildCourse(w, h, plotRef.current)
+        : buildTrack(w, h, nRef.current);
+    }
     function resize() {
       const dpr = window.devicePixelRatio || 1;
       const w = window.innerWidth;
@@ -43,7 +53,7 @@ function RaceView(props) {
       canvas.style.width = w + "px";
       canvas.style.height = h + "px";
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      trackRef.current = buildTrack(w, h, nRef.current);
+      trackRef.current = layout(w, h);
       draw(ctx, w, h, trackRef.current, raceRef.current);
     }
     window.addEventListener("resize", resize);
@@ -84,18 +94,28 @@ function RaceView(props) {
         names: curr.names,
         finished: curr.finished,
         placements: curr.placements,
+        // horses races (Stage 8): mode, laps and every slot's steed
+        mode: curr.mode,
+        laps: curr.laps,
+        horses: curr.horses,
         racers: curr.racers.map(function (rc, i) {
           const before = prev.racers[i] || rc;
           let p = before.p + (rc.p - before.p) * frac; // frac > 1 glides on
           // a winner glides no further than the line the ticks record,
           // and no chariot wraps the loop before the server says done
           p = rc.done ? Math.min(p, rc.p) : Math.min(p, 1);
-          return {
+          const out = {
             lane: rc.lane,
             p: p,
             done: rc.done,
             place: rc.place,
           };
+          // a horse changing lanes eases across over one poll (8.7)
+          if (rc.side !== undefined) {
+            const from = before.side !== undefined ? before.side : rc.side;
+            out.side = from + (rc.side - from) * Math.min(1, frac);
+          }
+          return out;
         }),
       };
     }
@@ -103,7 +123,9 @@ function RaceView(props) {
     function frame() {
       if (!aliveRef.current) return;
       const view = viewState();
-      if (view) {
+      // a horses race waits for its course before the first picture
+      const ready = view && (view.mode !== "custom" || trackRef.current.course);
+      if (ready) {
         raceRef.current = view;
         draw(ctx, window.innerWidth, window.innerHeight, trackRef.current, view);
       }
@@ -127,7 +149,10 @@ function RaceView(props) {
         : { prev: timeRef.current.curr, curr: now };
       if (data.n && data.n !== nRef.current) {
         nRef.current = data.n;
-        trackRef.current = buildTrack(window.innerWidth, window.innerHeight, nRef.current);
+        trackRef.current = layout(window.innerWidth, window.innerHeight);
+      }
+      if (data.mode === "custom" && data.track !== plotSlugRef.current) {
+        loadCourse(data.track);
       }
       if (data.finished >= data.n) {
         doneRef.current = true;
@@ -135,6 +160,26 @@ function RaceView(props) {
       } else {
         setLabel("Racing…");
       }
+    }
+
+    /* A horses race's course comes from the server (8.1/8.7): fetched
+     * once per slug, then laid out like the oval. A failed fetch clears
+     * the slug so the next snapshot asks again. */
+    function loadCourse(slug) {
+      plotSlugRef.current = slug;
+      fetch("api/?action=track&slug=" + encodeURIComponent(slug))
+        .then(function (res) {
+          if (!res.ok) throw new Error("track " + res.status);
+          return res.json();
+        })
+        .then(function (plot) {
+          if (!aliveRef.current || plotSlugRef.current !== slug) return;
+          plotRef.current = plot;
+          trackRef.current = layout(window.innerWidth, window.innerHeight);
+        })
+        .catch(function () {
+          if (plotSlugRef.current === slug) plotSlugRef.current = "";
+        });
     }
 
     function poll() {
@@ -172,6 +217,7 @@ function RaceView(props) {
                 raceNo: data.raceNo,
                 placements: data.race.placements,
                 names: data.names,
+                horses: data.race.horses,
                 participants: data.participants,
               });
             }
@@ -184,6 +230,7 @@ function RaceView(props) {
               raiseResults({
                 placements: data.placements,
                 names: data.names,
+                horses: data.horses,
               });
             }
           }
@@ -275,6 +322,7 @@ function RaceView(props) {
           roomId={props.roomId}
           placements={results.placements}
           names={results.names}
+          horses={results.horses}
           participants={results.participants}
           onRaceAgain={function () {
             // Rooms restart in place on the fresh race (5.4); practice

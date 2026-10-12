@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 340" data-name="Tight Circuit">
+  <!--
+    A rounded box with a notch: eight bends, short straights, turners favoured (about 50 % turns).
+    The centre line of the course. The backend plots it (api/lib/Tracks.php)
+    and every client draws two lanes either side of it. The race starts and
+    finishes at the first point and runs the way the path runs; a path that
+    ends in Z loops. Commands allowed: M L H V C Q Z (absolute or relative).
+  -->
+  <path id="centerline" fill="none" stroke="#c9a45c" stroke-width="4"
+        d="M126 40 L474.00 40.00 C518.18 40.00 554.00 75.82 554.00 120.00 L554.00 220.00 C554.00 264.18 518.18 300.00 474.00 300.00 L424.00 300.00 C396.39 300.00 374.00 277.61 374.00 250.00 L374.00 190.00 C374.00 162.39 351.61 140.00 324.00 140.00 L276.00 140.00 C248.39 140.00 226.00 162.39 226.00 190.00 L226.00 250.00 C226.00 277.61 203.61 300.00 176.00 300.00 L126.00 300.00 C81.82 300.00 46.00 264.18 46.00 220.00 L46.00 120.00 C46.00 75.82 81.82 40.00 126.00 40.00 Z"/>
+</svg>

@@ -31,6 +31,7 @@ function action_leave_room(): void
         // id+token can re-attach the player later. Counts ignore it — a
         // racer lane frees up (3.5).
         $doc['participants'][$self]['left'] = true;
+        $doc['participants'][$self]['ready'] = false; // 8.4: a quitter is never ready
         // A rider quitting the lobby voids the wagers laid on their lane,
         // lest the next soul to claim that lane inherit them.
         if ($doc['status'] === 'lobby' && $was['role'] === 'racer' && empty($was['left'])) {

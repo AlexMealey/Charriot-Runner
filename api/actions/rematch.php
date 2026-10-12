@@ -40,16 +40,24 @@ function action_rematch(): void
             $err = ['status' => 409, 'code' => 'too_few_racers', 'message' => 'Two riders at least must take the track.'];
             return null;
         }
-        asort($riders);
+        // Classic racers keep lane order; horses take the grid in join
+        // order (8.6), exactly as at the first start.
+        $custom = ($doc['config']['mode'] ?? 'classic') === 'custom';
+        if (!$custom) {
+            asort($riders);
+        }
         $newLane = 0;
         $riderNames = [];
         $riderIds = [];
+        $riderHorses = [];
         $newLaneOf = []; // participant id → lane in the race about to run
         foreach (array_keys($riders) as $i) {
             $newLaneOf[$doc['participants'][$i]['id']] = $newLane;
             $doc['participants'][$i]['lane'] = $newLane++;
             $riderNames[] = $doc['participants'][$i]['nickname'];
             $riderIds[] = $doc['participants'][$i]['id'];
+            // horses carry over to the rematch (stage-6 §6.4, B9)
+            $riderHorses[] = $doc['participants'][$i]['horse'] ?? null;
         }
         // Archived placements label themselves from the nicknames frozen
         // into the finished race at its start (4.2) — never from the
@@ -105,9 +113,24 @@ function action_rematch(): void
                 }
             }
         }
+        $opts = [];
+        if ($custom) {
+            $plot = Tracks::load((string) ($doc['config']['track'] ?? ''));
+            if ($plot === null) {
+                $err = ['status' => 404, 'code' => 'track_not_found', 'message' => 'The course hath vanished from the scrolls.'];
+                return null;
+            }
+            $opts = [
+                'mode' => 'custom',
+                'horses' => $riderHorses, // null = Random, drawn afresh from the new seed
+                'track' => $plot['slug'],
+                'laps' => (int) ($doc['config']['laps'] ?? 1),
+                'segments' => $plot['segments'],
+            ];
+        }
         $doc['raceNo']++;
         $seed = RaceEngine::prngNew();
-        $race = RaceEngine::create($seed, count($riders));
+        $race = RaceEngine::create($seed, count($riders), $opts);
         $race['seed'] = base64_encode(pack('N', $seed));
         $race['startedAt'] = microtime(true);
         $race['finishedAt'] = null;

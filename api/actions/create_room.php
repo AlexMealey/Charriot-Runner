@@ -17,7 +17,13 @@ function action_create_room(): void
         Http::error(400, 'bad_request', 'Chariots number 2 to 8 and souls 2 to 16 — never fewer souls than chariots.');
         return;
     }
-    $room = RoomStore::createRoom(['maxRacers' => $maxRacers, 'maxJoiners' => $maxJoiners]);
+    // Rules of the race (8.3): classic, or horses on a course for 1–3 laps.
+    [$setup, $problem] = Tracks::setup($body);
+    if ($setup === null) {
+        Http::error(400, 'bad_request', $problem);
+        return;
+    }
+    $room = RoomStore::createRoom(['maxRacers' => $maxRacers, 'maxJoiners' => $maxJoiners] + $setup);
     if (!RoomStore::saveRoom($room)) {
         // never hand out a room that was not written (code review M1)
         Http::error(500, 'storage_error', 'The scroll would not unroll.');

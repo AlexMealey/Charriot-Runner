@@ -10,19 +10,48 @@ declare(strict_types=1);
  * document alone (spec section 9).
  */
 
-/** Racers as the history and snapshots carry them: slim shapes only (section 3). */
+/** Seconds the riders get to make ready once the host first sounds the trumpet (8.5). */
+const TRUMPET_GRACE = 30.0;
+
+/**
+ * Racers as the history and snapshots carry them: slim shapes only
+ * (section 3). A horses race adds `side` — the lane of the two-lane course
+ * the horse is drawn in (Stage 8); classic racers stay exactly as before.
+ */
 function slimRacers(array $racers): array
 {
     $slim = [];
     foreach ($racers as $rc) {
-        $slim[] = [
+        $row = [
             'lane' => $rc['lane'],
             'p' => $rc['p'],
             'done' => $rc['done'],
             'place' => $rc['place'],
         ];
+        if (isset($rc['side'])) {
+            $row['side'] = $rc['side'];
+        }
+        $slim[] = $row;
     }
     return $slim;
+}
+
+/**
+ * What a horses race shows beyond the classic snapshot (Stage 8): mode,
+ * course slug, laps and the horse of every slot. Empty for classic races,
+ * whose snapshots keep their old shape.
+ */
+function horsesFields(array $race): array
+{
+    if (($race['mode'] ?? 'classic') !== 'custom') {
+        return [];
+    }
+    return [
+        'mode' => 'custom',
+        'track' => $race['track'],
+        'laps' => $race['laps'],
+        'horses' => $race['horses'],
+    ];
 }
 
 /** Placements as the history and snapshots carry them: lane and place. */
@@ -52,7 +81,7 @@ function practiceSnapshot(array $doc): array
         'names' => $doc['names'],
         'startedAt' => $doc['startedAt'],
         'finishedAt' => $doc['finishedAt'] ?? null,
-    ];
+    ] + horsesFields($doc);
 }
 
 /** Room snapshot shared by join_room and room_state (spec §5). */
@@ -72,6 +101,9 @@ function roomSnapshot(array $room): array
             'lane' => $p['lane'],
             // The lobby picker reads picks back off the roster poll (4.7).
             'prediction' => $p['prediction'] ?? null,
+            // Horses rooms (8.4): the steed (null = Random) and readiness.
+            'horse' => $p['horse'] ?? null,
+            'ready' => !empty($p['ready']),
         ];
     }
 
@@ -95,6 +127,11 @@ function roomSnapshot(array $room): array
         'raceNo' => $room['raceNo'],
         'race' => raceSnapshot($room['race']),
         'names' => $names,
+        // Seconds left of the trumpet's grace (8.5), counted on the server
+        // so no client clock is trusted; null while no grace runs.
+        'trumpetLeft' => isset($room['trumpetAt'])
+            ? max(0.0, $room['trumpetAt'] + TRUMPET_GRACE - microtime(true))
+            : null,
     ];
 }
 
@@ -117,7 +154,7 @@ function raceSnapshot(?array $race): ?array
         'racers' => slimRacers($race['racers']),
         'startedAt' => $race['startedAt'],
         'finishedAt' => $race['finishedAt'],
-    ];
+    ] + horsesFields($race);
 }
 
 /**

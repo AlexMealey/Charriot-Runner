@@ -107,6 +107,9 @@ function action_join_room(): void
             'lane' => $lane,
             'joinedAt' => date(DATE_ATOM),
             'prediction' => null,
+            // Horses rooms (8.4): no steed picked yet (Random), not ready.
+            'horse' => null,
+            'ready' => false,
         ];
         $doc['participants'][] = $me;
         $doc['updatedAt'] = date(DATE_ATOM);

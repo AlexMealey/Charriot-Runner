@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 400" data-name="Hippodrome">
+  <!--
+    The classic oval: two long straights, two broad bends (about 35 % turns).
+    The centre line of the course. The backend plots it (api/lib/Tracks.php)
+    and every client draws two lanes either side of it. The race starts and
+    finishes at the first point and runs the way the path runs; a path that
+    ends in Z loops. Commands allowed: M L H V C Q Z (absolute or relative).
+  -->
+  <path id="centerline" fill="none" stroke="#c9a45c" stroke-width="4"
+        d="M150 80 L850.00 80.00 C916.27 80.00 970.00 133.73 970.00 200.00 C970.00 266.27 916.27 320.00 850.00 320.00 L150.00 320.00 C83.73 320.00 30.00 266.27 30.00 200.00 C30.00 133.73 83.73 80.00 150.00 80.00 Z"/>
+</svg>

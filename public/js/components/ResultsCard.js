@@ -65,7 +65,13 @@ function ResultsCard(props) {
                   className="swatch"
                   style={{ background: RACERS[r.lane].color }}
                 />
-                <span className="nick">{props.names[r.lane]}</span>
+                <span className="nick">
+                  {props.names[r.lane]}
+                  {/* horses races (8.8): the steed under the rider */}
+                  {props.horses ? (
+                    <small className="steed">{horseName(props.horses[r.lane])}</small>
+                  ) : null}
+                </span>
               </li>
             );
           })}

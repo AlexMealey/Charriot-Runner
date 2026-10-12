@@ -12,6 +12,94 @@ function Landing(props) {
   // Souls who may enter: never fewer than the chariots, never past the
   // sixteen the server allows (a typed 99 is only a wish).
   const seats = Math.min(16, Math.max(racers, souls));
+  // Rules of the race (8.3/8.9): classic chariots, or horses on a course
+  // the server plots — chosen here for rooms and practice alike.
+  const [mode, setMode] = useState("classic");
+  const [track, setTrack] = useState("hippodrome");
+  const [laps, setLaps] = useState(1);
+  const [tracks, setTracks] = useState([]);
+  useEffect(function () {
+    let alive = true;
+    fetch("api/?action=tracks")
+      .then(function (res) {
+        return res.ok ? res.json() : null;
+      })
+      .then(function (data) {
+        if (alive && data && data.tracks) setTracks(data.tracks);
+      })
+      .catch(function () {
+        /* no list: the server's default course still serves */
+      });
+    return function () {
+      alive = false;
+    };
+  }, []);
+  const course = tracks.find(function (t) {
+    return t.slug === track;
+  });
+
+  // What every create call adds for the chosen rules.
+  function setup() {
+    return mode === "custom"
+      ? { mode: "custom", track: track, laps: course && !course.loop ? 1 : laps }
+      : { mode: "classic" };
+  }
+
+  // The rules, course and laps fields, shared by both panels.
+  function rulesFields() {
+    return (
+      <React.Fragment>
+        <div className="field">
+          <label>Rules of the race</label>
+          <select
+            value={mode}
+            onChange={function (e) {
+              setMode(e.target.value);
+            }}
+          >
+            <option value="classic">Classic — the gods decide</option>
+            <option value="custom">Horses — the riders decide</option>
+          </select>
+        </div>
+        {mode === "custom" && tracks.length ? (
+          <div className="field">
+            <label>The course</label>
+            <select
+              value={track}
+              onChange={function (e) {
+                setTrack(e.target.value);
+              }}
+            >
+              {tracks.map(function (t) {
+                return (
+                  <option key={t.slug} value={t.slug}>
+                    {t.name}
+                  </option>
+                );
+              })}
+            </select>
+          </div>
+        ) : null}
+        {mode === "custom" && (!course || course.loop) ? (
+          <div className="field">
+            <div className="rowline">
+              <label>Laps</label>
+              <span className="tally">{laps}</span>
+            </div>
+            <input
+              type="range"
+              min="1"
+              max="3"
+              value={laps}
+              onChange={function (e) {
+                setLaps(parseInt(e.target.value, 10));
+              }}
+            />
+          </div>
+        ) : null}
+      </React.Fragment>
+    );
+  }
 
   function enterKey(fn) {
     return function (e) {
@@ -29,10 +117,10 @@ function Landing(props) {
     if (busy) return; // Enter rides past the disabled button: one room per plea
     setBusy(true);
     setNotice("");
-    api("create_room", {
-      maxRacers: racers,
-      maxJoiners: seats,
-    })
+    api(
+      "create_room",
+      Object.assign({ maxRacers: racers, maxJoiners: seats }, setup())
+    )
       .then(function (data) {
         setBusy(false);
         localStorage.setItem("chariot.host." + data.roomId, data.hostToken);
@@ -60,7 +148,7 @@ function Landing(props) {
   function ride() {
     setBusy(true);
     setNotice("");
-    api("create_practice", { racers: racers })
+    api("create_practice", Object.assign({ racers: racers }, setup()))
       .then(function (data) {
         setBusy(false);
         props.navigate("/?practice=" + data.practiceId);
@@ -108,6 +196,7 @@ function Landing(props) {
             onKeyDown={enterKey(forgeRoom)}
           />
         </div>
+        {rulesFields()}
         {notice ? <p className="notice">{notice}</p> : null}
         <div className="menu">
           <button onClick={forgeRoom} disabled={busy}>
@@ -165,6 +254,7 @@ function Landing(props) {
             }}
           />
         </div>
+        {rulesFields()}
         {notice ? <p className="notice">{notice}</p> : null}
         <div className="menu">
           <button onClick={ride} disabled={busy}>
