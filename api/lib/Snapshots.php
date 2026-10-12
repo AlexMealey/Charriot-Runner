@@ -76,15 +76,13 @@ function roomSnapshot(array $room): array
     }
 
     // Racer nicknames by lane (4.2): the shared race view labels its
-    // chariots from this; null while the room has no race yet.
+    // chariots from the names frozen into the race at its start — riders
+    // who quit mid-race keep theirs, and no later join can relabel a
+    // chariot. null while the room has no race yet; a race stored before
+    // names were frozen keeps the array shape with blank labels.
     $names = null;
     if ($room['race'] !== null) {
-        $names = array_fill(0, (int) $room['race']['n'], null);
-        foreach ($room['participants'] as $p) {
-            if ($p['role'] === 'racer' && isset($names[$p['lane']])) {
-                $names[$p['lane']] = $p['nickname'];
-            }
-        }
+        $names = $room['race']['names'] ?? array_fill(0, (int) $room['race']['n'], null);
     }
 
     return [

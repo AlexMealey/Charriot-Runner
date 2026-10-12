@@ -42,20 +42,15 @@ function action_rematch(): void
         }
         asort($riders);
         $newLane = 0;
+        $riderNames = [];
         foreach (array_keys($riders) as $i) {
             $doc['participants'][$i]['lane'] = $newLane++;
+            $riderNames[] = $doc['participants'][$i]['nickname'];
         }
-        // Racer nicknames by lane (4.2), the map roomSnapshot builds:
-        // archived placements label themselves from this.
-        $names = null;
-        if ($doc['race'] !== null) {
-            $names = array_fill(0, (int) $doc['race']['n'], null);
-            foreach ($doc['participants'] as $p) {
-                if ($p['role'] === 'racer' && isset($names[$p['lane']])) {
-                    $names[$p['lane']] = $p['nickname'];
-                }
-            }
-        }
+        // Archived placements label themselves from the nicknames frozen
+        // into the finished race at its start (4.2) — never from the
+        // lanes just renumbered for the next one.
+        $names = $doc['race']['names'] ?? [];
         $winnerLane = null;
         $placements = [];
         foreach ($doc['race']['placements'] as $pl) {
@@ -97,6 +92,7 @@ function action_rematch(): void
         $race['seed'] = base64_encode(pack('N', $seed));
         $race['startedAt'] = microtime(true);
         $race['finishedAt'] = null;
+        $race['names'] = $riderNames; // frozen for this race, as in start_race
         $doc['race'] = $race;
         $doc['status'] = 'racing';
         $doc['updatedAt'] = date(DATE_ATOM);

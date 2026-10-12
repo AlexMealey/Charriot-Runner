@@ -110,7 +110,9 @@ function Lobby(props) {
       hostToken: localStorage.getItem("chariot.host." + props.roomId),
     })
       .then(function () {
-        setBusy(false);
+        // stay busy: the race is begun, and the next roster poll carries
+        // this lobby to the race view — a second blast would only be
+        // refused
       })
       .catch(function (err) {
         setBusy(false);

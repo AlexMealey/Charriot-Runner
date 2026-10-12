@@ -39,9 +39,11 @@ function action_start_race(): void
         asort($riders);
         $newLane = 0;
         $laneMap = [];
+        $riderNames = [];
         foreach ($riders as $i => $oldLane) {
             $laneMap[$oldLane] = $newLane;
             $doc['participants'][$i]['lane'] = $newLane++;
+            $riderNames[] = $doc['participants'][$i]['nickname'];
         }
         // Wagers follow their rider into the renumbered lanes; one on a
         // lane no rider holds any more is void.
@@ -56,6 +58,9 @@ function action_start_race(): void
         $race['seed'] = base64_encode(pack('N', $seed));
         $race['startedAt'] = microtime(true);
         $race['finishedAt'] = null;
+        // Nicknames by lane, frozen at the start (4.2): later joins, leaves
+        // and re-attaches can never relabel a chariot of this race.
+        $race['names'] = $riderNames;
         $doc['race'] = $race;
         $doc['status'] = 'racing';
         $doc['updatedAt'] = date(DATE_ATOM);
