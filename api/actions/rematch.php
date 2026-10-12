@@ -118,7 +118,13 @@ function action_rematch(): void
         if ($custom) {
             // horses null = Random, drawn afresh from the new seed; a map
             // course rides a fresh loop from it too (Stage 9)
-            $opts = Tracks::raceOptions((string) ($doc['config']['track'] ?? ''), (int) ($doc['config']['laps'] ?? 1), $riderHorses, $seed);
+            $opts = Tracks::raceOptions(
+                (string) ($doc['config']['track'] ?? ''),
+                (int) ($doc['config']['laps'] ?? 1),
+                $riderHorses,
+                $seed,
+                !empty($doc['config']['perLap'])
+            );
             if ($opts === null) {
                 $err = ['status' => 404, 'code' => 'track_not_found', 'message' => 'The course hath vanished from the scrolls.'];
                 return null;
@@ -126,6 +132,9 @@ function action_rematch(): void
         }
         $doc['raceNo']++;
         $race = RaceEngine::create($seed, count($riders), $opts);
+        if (isset($opts['courseClient'])) {
+            RoomStore::putExtra('rooms', $doc['id'], 'course-' . $doc['raceNo'], $opts['courseClient']);
+        }
         $race['seed'] = base64_encode(pack('N', $seed));
         $race['startedAt'] = microtime(true);
         $race['finishedAt'] = null;

@@ -32,14 +32,24 @@ final class Tracks
     /** @var array<string, ?array> plots already made this request */
     private static array $cache = [];
 
-    /** Every course in file-name order: [{slug, name, loop}]. */
+    /**
+     * Every course in file-name order, then the maps: [{slug, name, loop,
+     * kind, …}] — kind "course" with its turnShare, "map" with its image
+     * and size, or "any" (Maps::all) — enough for the pickers' faces.
+     */
     public static function all(): array
     {
         $out = [];
         foreach (glob(self::dir() . '/*.svg') ?: [] as $file) {
             $plot = self::load(basename($file, '.svg'));
             if ($plot !== null) {
-                $out[] = ['slug' => $plot['slug'], 'name' => $plot['name'], 'loop' => $plot['loop']];
+                $out[] = [
+                    'slug' => $plot['slug'],
+                    'name' => $plot['name'],
+                    'loop' => $plot['loop'],
+                    'kind' => 'course',
+                    'turnShare' => round($plot['turnShare'], 2),
+                ];
             }
         }
         return array_merge($out, Maps::all()); // map courses (Stage 9) after the drawn ones
@@ -132,18 +142,26 @@ final class Tracks
     /**
      * The options a horses race is created with (RaceEngine::create): the
      * course's straight/turn table for the sim, and for a map course
-     * ("map:<slug>" or "map:*") the whole loop picked from $seed, frozen
-     * into the race as `course`. Null when the course is unknown.
+     * ("map:<slug>" or "map:*") its loops grown from $seed — one for every
+     * lap with $perLap — frozen into the race as `course`, plus
+     * `courseClient`, the points the race view draws, for the caller to
+     * store beside the race (RoomStore::putExtra). Null when the course is
+     * unknown.
      */
-    public static function raceOptions(string $track, int $laps, array $horses, int $seed): ?array
+    public static function raceOptions(string $track, int $laps, array $horses, int $seed, bool $perLap = false): ?array
     {
         $opts = ['mode' => 'custom', 'horses' => $horses, 'laps' => $laps];
         if (Maps::isMap($track)) {
-            $course = Maps::course($track, $seed);
+            $course = Maps::course($track, $seed, $laps, $perLap);
             if ($course === null) {
                 return null;
             }
-            return $opts + ['track' => $course['track'], 'segments' => $course['segments'], 'course' => $course];
+            return $opts + [
+                'track' => $course['sim']['track'],
+                'segments' => $course['sim']['loops'][0]['segments'],
+                'course' => $course['sim'],
+                'courseClient' => $course['client'],
+            ];
         }
         $plot = self::load($track);
         if ($plot === null) {
@@ -206,7 +224,10 @@ final class Tracks
         if (!is_int($laps) || $laps < 1 || $laps > self::MAX_LAPS) {
             return [null, 'A race runs one to ' . self::MAX_LAPS . ' laps.'];
         }
-        return [['mode' => 'custom', 'track' => $slug, 'laps' => $plot['loop'] ? $laps : 1], null];
+        $laps = $plot['loop'] ? $laps : 1;
+        // a map course may ride a new loop every lap (Stage 9)
+        $perLap = Maps::isMap($slug) && $laps > 1 && ($body['perLap'] ?? false) === true;
+        return [['mode' => 'custom', 'track' => $slug, 'laps' => $laps, 'perLap' => $perLap], null];
     }
 
     /* --- plotting ------------------------------------------------------- */

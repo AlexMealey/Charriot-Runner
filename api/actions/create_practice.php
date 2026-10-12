@@ -23,7 +23,7 @@ function action_create_practice(): void
     $seed = RaceEngine::prngNew();
     $opts = [];
     if ($setup['mode'] === 'custom') {
-        $opts = Tracks::raceOptions($setup['track'], $setup['laps'], array_fill(0, $n, null), $seed);
+        $opts = Tracks::raceOptions($setup['track'], $setup['laps'], array_fill(0, $n, null), $seed, $setup['perLap']);
         if ($opts === null) {
             Http::error(404, 'track_not_found', 'The course hath vanished from the scrolls.');
             return;
@@ -34,6 +34,9 @@ function action_create_practice(): void
     $doc['startedAt'] = microtime(true);
     $doc['finishedAt'] = null;
     $doc['names'] = RaceEngine::names($n);
+    if (isset($opts['courseClient'])) {
+        RoomStore::putExtra('practice', $doc['practiceId'], 'course-1', $opts['courseClient']);
+    }
     if (!RoomStore::put('practice', $doc['practiceId'], $doc)) {
         // never hand out a race that was not written (code review M1)
         Http::error(500, 'storage_error', 'The scroll would not unroll.');

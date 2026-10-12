@@ -236,8 +236,7 @@ button:disabled {
 }
 
 input[type="text"],
-input[type="number"],
-select {
+input[type="number"] {
   width: 100%;
   box-sizing: border-box;
   padding: 11px 12px;
@@ -250,8 +249,7 @@ select {
 }
 
 input[type="text"]:focus,
-input[type="number"]:focus,
-select:focus {
+input[type="number"]:focus {
   outline: none;
   border-color: var(--gold);
   box-shadow: 0 0 0 1px rgba(201, 164, 92, 0.35);
@@ -599,10 +597,6 @@ body.waver::after {
 }
 
 /* ---- horses rooms (Stage 8): steeds, readiness, the trumpet's grace ---- */
-select:disabled {
-  opacity: 0.6;
-}
-
 .roster-row .steed {
   flex: 0 0 auto;
   color: var(--ink-dim);
@@ -628,13 +622,14 @@ select:disabled {
   font-size: 13px;
 }
 
-/* the steed picker (SteedPicker.js): a trigger dressed as an input, and a
- * plaque-dark list of two-line options — name above, stat pips below */
-.steed-picker {
+/* themed drop-downs (Dropdown.js) — the steed, the course and the rules:
+ * a trigger dressed as an input, and a plaque-dark list of two-line
+ * options — an icon, the name above, a note or stat pips below */
+.dropdown {
   position: relative;
 }
 
-.steed-picker .steed-trigger {
+.dropdown .dropdown-trigger {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -654,14 +649,14 @@ select:disabled {
   box-shadow: none;
 }
 
-.steed-picker .steed-trigger::before,
-.steed-picker .steed-trigger::after {
+.dropdown .dropdown-trigger::before,
+.dropdown .dropdown-trigger::after {
   content: none;
 }
 
-.steed-picker .steed-trigger:hover:not(:disabled),
-.steed-picker .steed-trigger:focus-visible,
-.steed-picker.open .steed-trigger {
+.dropdown .dropdown-trigger:hover:not(:disabled),
+.dropdown .dropdown-trigger:focus-visible,
+.dropdown.open .dropdown-trigger {
   outline: none;
   transform: none;
   color: var(--ink);
@@ -669,17 +664,17 @@ select:disabled {
   box-shadow: 0 0 0 1px rgba(201, 164, 92, 0.35);
 }
 
-.steed-picker .steed-trigger:disabled {
+.dropdown .dropdown-trigger:disabled {
   opacity: 0.6;
 }
 
-.steed-picker .caret {
+.dropdown .caret {
   margin-left: auto;
   color: var(--gold);
   font-size: 14px;
 }
 
-.steed-list {
+.dropdown-list {
   position: absolute;
   top: calc(100% + 4px);
   left: 0;
@@ -697,37 +692,37 @@ select:disabled {
   box-shadow: 0 10px 28px var(--shadow);
 }
 
-.steed-option {
+.dropdown-option {
   padding: 7px 10px;
   border: 1px solid transparent;
   border-radius: 4px;
   cursor: pointer;
 }
 
-.steed-option.active {
+.dropdown-option.active {
   background: rgba(201, 164, 92, 0.16);
   border-color: var(--lane-line);
 }
 
-.steed-option.chosen .steed-name::after {
+.dropdown-option.chosen .dd-name::after {
   content: " ✓";
   color: var(--gold-bright);
 }
 
-.steed-line {
+.dd-line {
   display: flex;
   align-items: center;
   gap: 10px;
   min-width: 0;
 }
 
-.horse-icon {
+.dd-icon {
   flex: 0 0 auto;
   width: 28px;
   height: 28px;
 }
 
-.horse-icon.random {
+.dd-icon.glyph {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -739,23 +734,40 @@ select:disabled {
   font-size: 14px;
 }
 
-.steed-text {
+.dd-text {
   display: flex;
   flex-direction: column;
   gap: 3px;
   min-width: 0;
 }
 
-.steed-name {
+.dd-name {
   color: var(--ink);
   font-size: 15px;
   line-height: 1.2;
 }
 
-.steed-note {
+.dd-note {
   color: var(--ink-dim);
   font-size: 12px;
   font-style: italic;
+}
+
+.dd-icon svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* a map's own image as its course icon */
+.dd-thumb {
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  object-fit: cover;
+  border: 1px solid var(--gold-dim);
+  border-radius: 4px;
+  background: var(--field-deep);
 }
 
 .steed-stats {

@@ -113,6 +113,32 @@ class RoomStore
         gzclose($gz);
     }
 
+    /**
+     * A side file kept beside a document — data/<kind>/<id>/<name>.json,
+     * written atomically — for what is too big to rewrite on every poll
+     * (a map race's loop points, Stage 9). gc() takes it with the rest.
+     */
+    public static function putExtra(string $kind, string $id, string $name, array $doc): bool
+    {
+        if (!self::validId($kind, $id) || preg_match('/^[a-z0-9-]+$/', $name) !== 1) {
+            return false;
+        }
+        $dir = self::root() . '/' . $kind . '/' . $id;
+        self::ensureDir($dir);
+        return self::writeDoc($dir . '/' . $name . '.json', $doc);
+    }
+
+    /** A side file (putExtra), or null when missing or unreadable. */
+    public static function getExtra(string $kind, string $id, string $name): ?array
+    {
+        if (!self::validId($kind, $id) || preg_match('/^[a-z0-9-]+$/', $name) !== 1) {
+            return null;
+        }
+        $path = self::root() . '/' . $kind . '/' . $id . '/' . $name . '.json';
+        $doc = is_file($path) ? json_decode((string) file_get_contents($path), true) : null;
+        return is_array($doc) ? $doc : null;
+    }
+
     /** Build a fresh lobby room document (spec §4); persist via saveRoom(). */
     public static function createRoom(array $cfg): array
     {

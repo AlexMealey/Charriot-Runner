@@ -56,7 +56,7 @@ class RaceEngine
 
     /** Stamina won back per tick a horse is not galloping. */
     private const STAMINA_REGEN = 0.5;
-    /** Lane-change look-ahead in laps (≈ 1.5 horse lengths) and its hold time in ticks. */
+    /** Lane-change look-ahead in laps of a drawn course (≈ 1.5 horse lengths) and its hold time in ticks. */
     private const PASS_GAP = 0.018;
     private const SIDE_HOLD = 30;
 
@@ -301,12 +301,12 @@ class RaceEngine
     {
         $state['tick'] += 1;
         $state['t'] += self::STEP;
-        $laps = (int) $state['laps'];
-        $segments = $state['course']['segments'];
-        // laps per second of a steady canter: a map course sets its own
-        // (a longer loop or a bigger map is a longer race), others ride at
-        // BASE_SPEED as always
-        $base = (float) ($state['course']['baseSpeed'] ?? self::BASE_SPEED);
+        $course = $state['course'];
+        // p is the race's progress in time at a steady canter: every lap
+        // takes its own seconds — a map course sets them (its loop's length,
+        // each lap maybe a loop of its own), drawn courses ride BASE_SPEED
+        $times = self::lapTimes($state);
+        $total = array_sum($times);
         $finishers = [];
         for ($i = 0, $n = count($state['racers']); $i < $n; $i++) {
             $rc = &$state['racers'][$i];
@@ -316,7 +316,11 @@ class RaceEngine
             }
             $horse = self::HORSES[$rc['horse']];
             $full = (float) $horse['stamina'];
-            if (self::inTurn($segments, fmod($rc['p'] * $laps, 1.0))) {
+            [$lap, $u] = self::lapAt($times, $rc['p'] * $total);
+            $segments = isset($course['loops'])
+                ? $course['loops'][empty($course['perLap']) ? 0 : $lap]['segments']
+                : $course['segments'];
+            if (self::inTurn($segments, $u)) {
                 $speed = self::SPEED['turning'][$horse['turning']];
                 $rc['stamina'] = min($full, $rc['stamina'] + self::STAMINA_REGEN);
                 $rc['blown'] = false;
@@ -333,9 +337,9 @@ class RaceEngine
             }
             $surge = $rc['surgeAmp'] * sin($rc['surgePhase'] + $state['t'] * $rc['surgeW']);
             $jitter = (self::prngNext($state['prng']) - 0.5) * 0.05;
-            $v = $base * $speed * (1 + 0.5 * $surge + $jitter);
+            $pace = $speed * (1 + 0.5 * $surge + $jitter);
             $before = $rc['p'];
-            $rc['p'] += max(0.25 * $base, $v) * self::STEP / $laps; // never below a quarter pace
+            $rc['p'] += max(0.25, $pace) * self::STEP / $total; // never below a quarter pace
             if ($rc['p'] >= 1) {
                 $rc['done'] = true;
                 // how far into this tick the line was crossed: earlier wins
@@ -350,6 +354,25 @@ class RaceEngine
             $state['placements'][] = ['lane' => $state['racers'][$i]['lane'], 'place' => $state['finished']];
         }
         self::steerSides($state);
+    }
+
+    /** Seconds each lap takes at a steady canter (see stepCustom). */
+    private static function lapTimes(array $state): array
+    {
+        return $state['course']['lapTimes'] ?? array_fill(0, max(1, (int) $state['laps']), 1 / self::BASE_SPEED);
+    }
+
+    /** [lap, position 0..1 within it] for $t seconds of the race at a canter. */
+    private static function lapAt(array $times, float $t): array
+    {
+        $last = count($times) - 1;
+        foreach ($times as $k => $lapTime) {
+            if ($t < $lapTime || $k === $last) {
+                return [$k, max(0.0, min(1.0, $t / $lapTime))];
+            }
+            $t -= $lapTime;
+        }
+        return [0, 0.0];
     }
 
     /** Whether lap position $u (0..1) lies in a turn of the course table. */
@@ -372,11 +395,14 @@ class RaceEngine
      */
     private static function steerSides(array &$state): void
     {
-        $laps = (int) $state['laps'];
+        // distances in seconds of the race at a canter; the look-ahead is the
+        // course's own (a map's pace) or PASS_GAP laps of a drawn course
+        $total = array_sum(self::lapTimes($state));
+        $gap = (float) ($state['course']['passGap'] ?? self::PASS_GAP / self::BASE_SPEED);
         $dist = [];
         foreach ($state['racers'] as $i => $rc) {
             if (!$rc['done']) {
-                $dist[$i] = $rc['p'] * $laps;
+                $dist[$i] = $rc['p'] * $total;
             }
         }
         arsort($dist); // stable: ties keep slot order
@@ -391,10 +417,10 @@ class RaceEngine
                 if ($j === $i) {
                     continue;
                 }
-                $gap = $dj - $d;
+                $ahead = $dj - $d;
                 if ($state['racers'][$j]['side'] === $me['side']) {
-                    $blocked = $blocked || ($gap > 0 && $gap < self::PASS_GAP);
-                } elseif (abs($gap) < self::PASS_GAP) {
+                    $blocked = $blocked || ($ahead > 0 && $ahead < $gap);
+                } elseif (abs($ahead) < $gap) {
                     $clear = false;
                 }
             }

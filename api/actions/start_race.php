@@ -92,7 +92,13 @@ function action_start_race(): void
         if ($custom) {
             // horses null = Random, drawn from the seed; a map course's loop
             // is picked from the same seed (Stage 9)
-            $opts = Tracks::raceOptions((string) ($doc['config']['track'] ?? ''), (int) ($doc['config']['laps'] ?? 1), $riderHorses, $seed);
+            $opts = Tracks::raceOptions(
+                (string) ($doc['config']['track'] ?? ''),
+                (int) ($doc['config']['laps'] ?? 1),
+                $riderHorses,
+                $seed,
+                !empty($doc['config']['perLap'])
+            );
             if ($opts === null) {
                 $err = ['status' => 404, 'code' => 'track_not_found', 'message' => 'The course hath vanished from the scrolls.'];
                 return null;
@@ -100,6 +106,10 @@ function action_start_race(): void
             unset($doc['trumpetAt']);
         }
         $race = RaceEngine::create($seed, count($riders), $opts);
+        if (isset($opts['courseClient'])) {
+            // a map race's loops, too big for the room file every poll rewrites
+            RoomStore::putExtra('rooms', $doc['id'], 'course-' . $doc['raceNo'], $opts['courseClient']);
+        }
         $race['seed'] = base64_encode(pack('N', $seed));
         $race['startedAt'] = microtime(true);
         $race['finishedAt'] = null;

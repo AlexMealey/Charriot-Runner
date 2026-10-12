@@ -45,39 +45,79 @@ function Landing(props) {
       : { mode: "classic" };
   }
 
+  // The rules, as the themed drop-down shows them.
+  const RULES = [
+    {
+      value: "classic",
+      face: (
+        <DropdownFace icon={<ChariotIcon color={RACERS[0].color} />} name="Classic">
+          <span className="dd-note">chariots — the gods decide</span>
+        </DropdownFace>
+      ),
+    },
+    {
+      value: "custom",
+      face: (
+        <DropdownFace icon={<HorseIcon color={RACERS[3].color} />} name="Horses">
+          <span className="dd-note">steeds of every stat — the riders decide</span>
+        </DropdownFace>
+      ),
+    },
+  ];
+
+  // A course as the drop-down shows it: a map by its own image, a drawn
+  // course by an oval, "Any map" by a die.
+  function courseFace(t) {
+    if (t.kind === "map") {
+      return (
+        <DropdownFace icon={<img className="dd-thumb" src={t.image} alt="" loading="lazy" />} name={t.name}>
+          <span className="dd-note">map · a new road each race · {t.size}</span>
+        </DropdownFace>
+      );
+    }
+    if (t.kind === "any") {
+      return (
+        <DropdownFace icon={<GlyphIcon>⚄</GlyphIcon>} name={t.name}>
+          <span className="dd-note">a map drawn by lot, a new road each race</span>
+        </DropdownFace>
+      );
+    }
+    return (
+      <DropdownFace icon={<CourseIcon />} name={t.name}>
+        <span className="dd-note">
+          drawn course
+          {t.turnShare !== undefined ? " · " + Math.round(t.turnShare * 100) + "% turns" : ""}
+        </span>
+      </DropdownFace>
+    );
+  }
+
   // The rules, course and laps fields, shared by both panels.
   function rulesFields() {
     return (
       <React.Fragment>
         <div className="field">
           <label>Rules of the race</label>
-          <select
+          <Dropdown
+            id={panel + "-rules"}
+            label="Rules of the race"
+            options={RULES}
             value={mode}
-            onChange={function (e) {
-              setMode(e.target.value);
-            }}
-          >
-            <option value="classic">Classic — the gods decide</option>
-            <option value="custom">Horses — the riders decide</option>
-          </select>
+            onChange={setMode}
+          />
         </div>
         {mode === "custom" && tracks.length ? (
           <div className="field">
             <label>The course</label>
-            <select
-              value={track}
-              onChange={function (e) {
-                setTrack(e.target.value);
-              }}
-            >
-              {tracks.map(function (t) {
-                return (
-                  <option key={t.slug} value={t.slug}>
-                    {t.name}
-                  </option>
-                );
+            <Dropdown
+              id={panel + "-course"}
+              label="The course"
+              options={tracks.map(function (t) {
+                return { value: t.slug, face: courseFace(t) };
               })}
-            </select>
+              value={track}
+              onChange={setTrack}
+            />
           </div>
         ) : null}
         {mode === "custom" && (!course || course.loop) ? (

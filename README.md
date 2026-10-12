@@ -211,9 +211,9 @@ so a longer loop — or a bigger map — makes a longer race.
    docker compose exec -T web php api/tools/extract_roads.php <slug> --preview > roads.png
    ```
 
-4. Rebuild once more. The map appears in the pickers as
-   "<Name> — a new road each race"; with two or more maps, "Any map" joins
-   them.
+4. Rebuild once more. The map appears in the course picker under its
+   name, with its own image as the icon; with two or more maps, "Any map"
+   joins them.
 
 ## Configuration
 
@@ -269,9 +269,10 @@ changing any of them.
     the short poller (slower in hidden tabs), and room-mark parsing
   - `names.js`: herald word-names
   - `routes.js`: query-string routing (`/`, `/?room=`, `/?practice=`)
-  - `components/`: React views: `Landing.js`, `JoinGate.js`, `Lobby.js`
-    (with `SteedPicker.js`, the horse drop-down), `RaceView.js`,
-    `ResultsCard.js` and `DustScroll.js`
+  - `components/`: React views: `Landing.js`, `JoinGate.js`, `Lobby.js`,
+    `RaceView.js`, `ResultsCard.js` and `DustScroll.js`; `Dropdown.js`,
+    the app's themed drop-down (rules, course, steed), and
+    `SteedPicker.js`, the horse drop-down and the small icons
   - `app.js`: the router shell and mount
 - `api/index.php`: the JSON API front controller (dispatches on `?action=`)
 - `api/actions/`: one handler per action (see the API table below)

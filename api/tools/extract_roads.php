@@ -35,6 +35,9 @@ if (PHP_SAPI !== 'cli') {
     exit;
 }
 
+require __DIR__ . '/../lib/RaceEngine.php'; // the seeded PRNG …
+require __DIR__ . '/../lib/Maps.php';       // … and the loop search, for maxLoop
+
 $slug = $argv[1] ?? '';
 $preview = in_array('--preview', $argv, true);
 if (preg_match('/^[a-z0-9_]+$/', $slug) !== 1) {
@@ -507,6 +510,9 @@ foreach ($E as $e) {
         'length' => round($length($pl), 1),
     ];
 }
+
+// the longest loop, estimated once here: every race loop reaches 75 % of it
+$out['maxLoop'] = round(Maps::longest($out), 1);
 
 if (!$preview) {
     echo json_encode($out, JSON_UNESCAPED_SLASHES), "\n";
