@@ -2,8 +2,11 @@
 function App() {
   const [route, setRoute] = useState(parseRoute);
 
+  // Each view starts on a steady link: the wavering notice (4.8) belongs
+  // to the pollers of the view just left, and no one there can lower it.
   useEffect(function () {
     function onPop() {
+      waver(true);
       setRoute(parseRoute());
     }
     window.addEventListener("popstate", onPop);
@@ -13,6 +16,7 @@ function App() {
   }, []);
 
   function navigate(to) {
+    waver(true);
     window.history.pushState({}, "", to);
     setRoute(parseRoute());
   }

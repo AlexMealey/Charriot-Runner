@@ -23,6 +23,7 @@ function Landing(props) {
   }
 
   function forgeRoom() {
+    if (busy) return; // Enter rides past the disabled button: one room per plea
     setBusy(true);
     setNotice("");
     api("create_room", {

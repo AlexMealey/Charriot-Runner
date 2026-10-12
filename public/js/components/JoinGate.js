@@ -99,6 +99,9 @@ function JoinGate(props) {
   }
 
   function join() {
+    // Enter rides past the disabled button: one plea at a time, lest a
+    // double press inscribe the same soul twice.
+    if (busy) return;
     const name = nickname.trim();
     if (!name) {
       setNotice("The heralds need a name to cry.");

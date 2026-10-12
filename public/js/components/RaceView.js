@@ -22,6 +22,8 @@ function RaceView(props) {
   // (5.1–5.2): while set, the results card stands in place of the finish
   // label.
   const [results, setResults] = useState(null);
+  // An unknown or expired race (404) yields to the dust scroll (spec §6).
+  const [lost, setLost] = useState(false);
 
   useEffect(function () {
     /* Smoothing (4.10): the race view relaxes the 250 ms lock to ~500 ms —
@@ -146,7 +148,7 @@ function RaceView(props) {
           if (res.status === 404) {
             waver(true); // the link itself answered
             doneRef.current = true;
-            setLabel("This scroll hath turned to dust");
+            if (aliveRef.current) setLost(true);
             return null;
           }
           // a refusal rides the failure path below, and polls on
@@ -186,11 +188,11 @@ function RaceView(props) {
           if (!doneRef.current) timerRef.current = setTimeout(poll, POLL_MS);
         })
         .catch(function () {
-          // a wavered link simply polls again (the notice shows it)
+          // a wavered link simply polls again (the notice shows it) — but
+          // a view already left raises no notice over the next one
+          if (!aliveRef.current) return;
           waver(false);
-          if (aliveRef.current && !doneRef.current) {
-            timerRef.current = setTimeout(poll, POLL_MS);
-          }
+          if (!doneRef.current) timerRef.current = setTimeout(poll, POLL_MS);
         });
     }
 
@@ -241,6 +243,8 @@ function RaceView(props) {
       }
     });
   }, [results]);
+
+  if (lost) return <DustScroll navigate={props.navigate} />;
 
   return (
     <React.Fragment>

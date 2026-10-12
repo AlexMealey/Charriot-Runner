@@ -54,9 +54,10 @@ function poll(url, intervalMs, onData) {
         timer = setTimeout(tick, intervalMs);
       })
       .catch(function () {
-        // a wavered link simply polls again
+        // a wavered link simply polls again — a stopped poller stays mute
+        if (!alive) return;
         waver(false);
-        if (alive) timer = setTimeout(tick, intervalMs);
+        timer = setTimeout(tick, intervalMs);
       });
   }
   tick();
