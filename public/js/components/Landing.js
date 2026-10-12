@@ -59,7 +59,6 @@ function Landing(props) {
     api("create_practice", { racers: racers })
       .then(function (data) {
         setBusy(false);
-        localStorage.setItem("chariot.practiceId", data.practiceId);
         props.navigate("/?practice=" + data.practiceId);
       })
       .catch(function (err) {

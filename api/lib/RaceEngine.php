@@ -161,12 +161,21 @@ class RaceEngine
      * Capped at 900 steps per call so a long-idle race cannot stall a
      * request; the next call continues from the stored tick. Stepping is
      * deterministic in the stored PRNG state, so one call to tick N equals
-     * N single steps.
+     * N single steps. Stops once every racer is done, so a finished race
+     * keeps its final tick (code review C2). $onTick, when given, sees the
+     * state after every step (the tick history hooks in here).
      */
-    public static function advance(array &$state, int $targetTick): void
+    public static function advance(array &$state, int $targetTick, ?callable $onTick = null): void
     {
-        for ($steps = 0; $state['tick'] < $targetTick && $steps < 900; $steps++) {
+        for (
+            $steps = 0;
+            $state['finished'] < $state['n'] && $state['tick'] < $targetTick && $steps < 900;
+            $steps++
+        ) {
             self::step($state);
+            if ($onTick !== null) {
+                $onTick($state);
+            }
         }
     }
 

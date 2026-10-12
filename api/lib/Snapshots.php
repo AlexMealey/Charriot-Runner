@@ -35,7 +35,11 @@ function slimPlacements(array $placements): array
     return $slim;
 }
 
-/** Practice snapshot shared by create_practice and practice_state. */
+/**
+ * Practice snapshot shared by create_practice and practice_state: the same
+ * slim shape as room_state.race (spec §5) plus the generated `names` —
+ * ranks and surge parameters stay in the stored doc.
+ */
 function practiceSnapshot(array $doc): array
 {
     return [
@@ -43,10 +47,11 @@ function practiceSnapshot(array $doc): array
         't' => $doc['t'],
         'n' => $doc['n'],
         'finished' => $doc['finished'],
-        'placements' => $doc['placements'],
-        'racers' => $doc['racers'],
+        'placements' => slimPlacements($doc['placements']),
+        'racers' => slimRacers($doc['racers']),
         'names' => $doc['names'],
         'startedAt' => $doc['startedAt'],
+        'finishedAt' => $doc['finishedAt'] ?? null,
     ];
 }
 
@@ -116,37 +121,39 @@ function raceSnapshot(?array $race): ?array
 }
 
 /**
- * Catch a racing room's sim up to now (spec §3): one fixed tick at a time
- * so every tick lands in the history, same 900-step cap as the practice
- * poll — a paused tab resumes from the stored tick on its next poll.
- * Stops the moment the race is run: no frozen ticks are appended, and the
- * finish stamps status/finishedAt exactly once (code review C2). Runs
- * inside RoomStore::mutate, so the history append shares the room's lock
- * (code review C1).
+ * Catch a stored race (room or practice) up to now (spec §3): one fixed
+ * tick at a time via RaceEngine::advance, so every tick becomes a history
+ * line — same 900-step cap, and a paused tab resumes from the stored tick
+ * on its next poll. Stops the moment the race is run, so no frozen ticks
+ * are recorded (code review C2). Returns the new tick lines in slim shapes
+ * only (§3): seed, PRNG and surge parameters stay put.
+ */
+function catchUpRace(array &$race): array
+{
+    $targetTick = (int) floor((microtime(true) - (float) $race['startedAt']) * 60);
+    $lines = [];
+    RaceEngine::advance($race, $targetTick, function (array $r) use (&$lines): void {
+        $lines[] = json_encode([
+            'tick' => $r['tick'],
+            't' => $r['t'],
+            'racers' => slimRacers($r['racers']),
+            'placements' => slimPlacements($r['placements']),
+        ]);
+    });
+    return $lines;
+}
+
+/**
+ * Catch a racing room's sim up to now (catchUpRace above); the finish
+ * stamps status/finishedAt exactly once (code review C2). Runs inside
+ * RoomStore::mutate, so the history append shares the room's lock (code
+ * review C1).
  */
 function catchUpRoomRace(array &$room): void
 {
     $race = &$room['race'];
-    $targetTick = (int) floor((microtime(true) - (float) $race['startedAt']) * 60);
-    $lines = [];
-    $steps = 0;
-    while (
-        $race['finished'] < $race['n'] &&
-        $race['tick'] < $targetTick &&
-        $steps < 900
-    ) {
-        $steps++;
-        RaceEngine::step($race);
-        // slim shapes only (§3): seed, PRNG and surge parameters stay put
-        $lines[] = json_encode([
-            'tick' => $race['tick'],
-            't' => $race['t'],
-            'racers' => slimRacers($race['racers']),
-            'placements' => slimPlacements($race['placements']),
-        ]);
-    }
-    // empty $lines (nothing advanced) are dropped inside appendTicks
-    RoomStore::appendTicks('rooms', $room['id'], $room['raceNo'], $lines);
+    // empty lines (nothing advanced) are dropped inside appendTicks
+    RoomStore::appendTicks('rooms', $room['id'], $room['raceNo'], catchUpRace($race));
     if ($race['finished'] >= $race['n']) {
         $race['finishedAt'] = microtime(true);
         $room['status'] = 'finished';

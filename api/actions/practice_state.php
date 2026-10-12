@@ -5,25 +5,24 @@ declare(strict_types=1);
 function action_practice_state(): void
 {
     $id = (string) ($_GET['race'] ?? '');
-    $doc = RoomStore::get('practice', $id);
-    if ($doc === null) {
+    if (RoomStore::get('practice', $id) === null) {
         Http::error(404, 'practice_not_found', 'No such practice race');
         return;
     }
-    // Catch up one fixed tick at a time, recording each tick for the
-    // history (advance() has no recording hook; same 900-step cap).
-    $targetTick = (int) floor((microtime(true) - (float) $doc['startedAt']) * 60);
-    $lines = [];
-    for ($steps = 0; $doc['tick'] < $targetTick && $steps < 900; $steps++) {
-        RaceEngine::step($doc);
-        $lines[] = json_encode([
-            'tick' => $doc['tick'],
-            't' => $doc['t'],
-            'racers' => slimRacers($doc['racers']),
-            'placements' => $doc['placements'],
-        ]);
+    // Read, catch-up, tick appends and save held under one lock, so two
+    // tabs on the same race can neither duplicate ticks nor lose steps
+    // (code review C1). A finished race stays frozen: no frozen ticks, and
+    // finishedAt is stamped exactly once (code review C2).
+    $doc = RoomStore::mutate('practice', $id, function (array $doc) use ($id): array {
+        RoomStore::appendTicks('practice', $id, 1, catchUpRace($doc));
+        if ($doc['finished'] >= $doc['n'] && ($doc['finishedAt'] ?? null) === null) {
+            $doc['finishedAt'] = microtime(true);
+        }
+        return $doc;
+    });
+    if ($doc === null) {
+        Http::error(500, 'storage_error', 'The scroll would not unroll.');
+        return;
     }
-    RoomStore::appendTicks('practice', $id, 1, $lines);
-    RoomStore::put('practice', $id, $doc);
     echo json_encode(practiceSnapshot($doc));
 }

@@ -9,6 +9,7 @@ function action_create_practice(): void
     $doc = RaceEngine::create(RaceEngine::prngNew(), $n);
     $doc['practiceId'] = bin2hex(random_bytes(8));
     $doc['startedAt'] = microtime(true);
+    $doc['finishedAt'] = null;
     $doc['names'] = RaceEngine::names($n);
     RoomStore::put('practice', $doc['practiceId'], $doc);
     echo json_encode([

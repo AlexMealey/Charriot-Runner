@@ -11,9 +11,7 @@ function RaceView(props) {
   const prevRef = useRef(null); // second-recent practice snapshot
   const currRef = useRef(null); // most recent practice snapshot
   const timeRef = useRef({ prev: 0, curr: 0 });
-  const idRef = useRef(
-    props.practiceId || localStorage.getItem("chariot.practiceId") || ""
-  );
+  const idRef = useRef(props.practiceId || "");
   const nRef = useRef(4);
   const fracRef = useRef(1);
   const doneRef = useRef(false);
@@ -196,31 +194,10 @@ function RaceView(props) {
         });
     }
 
-    // An id from the landing or localStorage starts polling at once;
-    // without one, open a fresh practice race and keep its id + snapshot.
-    // A room rides room_state (step 4.4) — never summon a practice race
-    // on its behalf.
-    function begin() {
-      if (props.roomId) {
-        poll();
-        return;
-      }
-      if (idRef.current) {
-        poll();
-        return;
-      }
-      api("create_practice", { racers: 4 })
-        .then(function (data) {
-          idRef.current = data.practiceId;
-          localStorage.setItem("chariot.practiceId", data.practiceId);
-          if (data.snapshot) accept(data.snapshot);
-          poll();
-        })
-        .catch(function () {
-          if (aliveRef.current) timerRef.current = setTimeout(begin, 1000);
-        });
-    }
-    begin();
+    // Both feeds start polling at once: a room rides room_state (step
+    // 4.4); practice rides the id in /?practice=<id> — the landing's Ride!
+    // opened that race, and a reload keeps the same URL, so the same race.
+    poll();
 
     /* A rematch begins the view anew (5.4): the card drops, the segment
      * refs blank so the fresh race snaps in from tick 0, and both loops
