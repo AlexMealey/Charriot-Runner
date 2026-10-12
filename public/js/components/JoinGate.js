@@ -9,6 +9,27 @@ function JoinGate(props) {
   const [notice, setNotice] = useState("");
   const [lost, setLost] = useState(false);
   const [session, setSession] = useState(null);
+  // An expired or unknown room shows the dust at once (7.2): one room_state
+  // probe on arrival, and the nickname form waits for a room that answers.
+  const [found, setFound] = useState(false);
+  useEffect(function () {
+    let alive = true;
+    fetch("api/?action=room_state&room=" + encodeURIComponent(props.roomId), {
+      cache: "no-store",
+    })
+      .then(function (res) {
+        if (!alive) return;
+        if (res.status === 404) setLost(true);
+        else setFound(true);
+      })
+      .catch(function () {
+        // a wavering link: let the heralds try the join itself
+        if (alive) setFound(true);
+      });
+    return function () {
+      alive = false;
+    };
+  }, [props.roomId]);
 
   // Thine identity survives the quitting (step 4.9): the kept id+token is
   // offered to join_room first — a match re-attaches the same player (name
@@ -151,6 +172,17 @@ function JoinGate(props) {
         session={session}
         navigate={props.navigate}
       />
+    );
+  }
+
+  if (!found) {
+    return (
+      <div className="stage">
+        <div className="card">
+          <h1>Enter the Hippodrome</h1>
+          <p className="tagline">the heralds seek thy room…</p>
+        </div>
+      </div>
     );
   }
 

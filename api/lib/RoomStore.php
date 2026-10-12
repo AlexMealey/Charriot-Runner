@@ -16,6 +16,9 @@ declare(strict_types=1);
  */
 class RoomStore
 {
+    /** Seconds a room or practice race may lie untouched before gc() takes it (spec §8). */
+    private const TTL = 6 * 3600;
+
     /**
      * Write a document atomically. False when nothing was stored (bad id,
      * no lock, failed write) — callers answer 500 rather than hand out an
@@ -156,6 +159,49 @@ class RoomStore
         }
         @unlink($tmp);
         return false;
+    }
+
+    /**
+     * Lazy garbage collection (spec §8, Stage 7.1): every room or practice
+     * race whose document has not been written for TTL goes, with its tick
+     * histories and lock sidecar. Polls rewrite the document, so an open
+     * tab keeps its room alive. Each candidate is re-checked under its own
+     * lock — taken without waiting, so a room in use is simply skipped.
+     * Cheap enough to run on every create and join.
+     */
+    public static function gc(): void
+    {
+        $cutoff = time() - self::TTL;
+        foreach (['rooms', 'practice'] as $kind) {
+            foreach (glob(self::root() . '/' . $kind . '/*.json') ?: [] as $doc) {
+                $mtime = @filemtime($doc);
+                if ($mtime === false || $mtime >= $cutoff) {
+                    continue;
+                }
+                $lock = @fopen($doc . '.lock', 'c');
+                if ($lock === false) {
+                    continue;
+                }
+                if (flock($lock, LOCK_EX | LOCK_NB)) {
+                    clearstatcache(true, $doc);
+                    $mtime = @filemtime($doc);
+                    if ($mtime !== false && $mtime < $cutoff) {
+                        $dir = substr($doc, 0, -strlen('.json'));
+                        foreach (glob($dir . '/*') ?: [] as $file) {
+                            @unlink($file); // race-<n>.ticks.jsonl.gz
+                        }
+                        @rmdir($dir);
+                        foreach (glob($doc . '.tmp-*') ?: [] as $file) {
+                            @unlink($file); // a write that never landed
+                        }
+                        @unlink($doc);
+                        @unlink($doc . '.lock');
+                    }
+                    flock($lock, LOCK_UN);
+                }
+                fclose($lock);
+            }
+        }
     }
 
     /** Root of the store, one level above api/. */

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 function action_create_room(): void
 {
+    RoomStore::gc(); // rooms and races idle for 6 h crumble first (7.1)
     $body = Http::body();
     $maxRacers = $body['maxRacers'] ?? null;
     $maxJoiners = $body['maxJoiners'] ?? null;

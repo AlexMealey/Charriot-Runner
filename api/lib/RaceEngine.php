@@ -5,7 +5,8 @@ declare(strict_types=1);
 /**
  * Race simulation engine (server-authoritative).
  *
- * Holds the seeded PRNG (a faithful port of the browser's mulberry32), race
+ * Holds the seeded PRNG (a faithful port of JS mulberry32, which the browser
+ * sim used before Stage 1), race
  * creation and stepping (ports of the browser's createRace / stepRace). The
  * PRNG state is a single serializable 32-bit integer, so a race can be
  * stored mid-flight and advanced later between requests.

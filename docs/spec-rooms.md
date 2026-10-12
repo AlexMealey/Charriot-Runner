@@ -319,12 +319,12 @@ just as importantly, what not to.
 | --- | --- | --- |
 | 1 — Backend race engine + practice slice | [stages/stage-1.md](stages/stage-1.md) | steps done (1.1–1.9), acceptance pending runtime |
 | 2 — Landing page & routing | [stages/stage-2.md](stages/stage-2.md) | **done** |
-| 3 — Rooms: create, join, lobby | [stages/stage-3.md](stages/stage-3.md) | in progress (3.1–3.2 done) |
-| 4 — Multiplayer race + predictions | [stages/stage-4.md](stages/stage-4.md) | not started |
-| 5 — Results + rematch | [stages/stage-5.md](stages/stage-5.md) | not started |
+| 3 — Rooms: create, join, lobby | [stages/stage-3.md](stages/stage-3.md) | steps done (3.1–3.10), acceptance pending runtime |
+| 4 — Multiplayer race + predictions | [stages/stage-4.md](stages/stage-4.md) | steps done (4.1–4.10), acceptance pending runtime |
+| 5 — Results + rematch | [stages/stage-5.md](stages/stage-5.md) | steps done (5.1–5.5), acceptance pending runtime |
 | 6 — Custom tracks & racers (spec + questions) | [stages/stage-6.md](stages/stage-6.md) | **decided** — implemented by Stage 8 |
-| 7 — TTL, hardening, docs | [stages/stage-7.md](stages/stage-7.md) | not started |
-| 8 — Horses mode (two-lane courses + horses) | [stages/stage-8.md](stages/stage-8.md) | not started |
+| 7 — TTL, hardening, docs | [stages/stage-7.md](stages/stage-7.md) | steps done (7.1–7.6), acceptance pending runtime |
+| 8 — Horses mode (two-lane courses + horses) | [stages/stage-8.md](stages/stage-8.md) | steps done (8.1–8.10), acceptance pending runtime |
 
 ---
 

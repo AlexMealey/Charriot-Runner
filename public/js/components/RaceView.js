@@ -234,14 +234,18 @@ function RaceView(props) {
               });
             }
           }
-          if (!doneRef.current) timerRef.current = setTimeout(poll, POLL_MS);
+          if (!doneRef.current) {
+            timerRef.current = setTimeout(poll, pollDelay(POLL_MS)); // 1 s hidden (7.4)
+          }
         })
         .catch(function () {
           // a wavered link simply polls again (the notice shows it) — but
           // a view already left raises no notice over the next one
           if (!aliveRef.current) return;
           waver(false);
-          if (!doneRef.current) timerRef.current = setTimeout(poll, POLL_MS);
+          if (!doneRef.current) {
+            timerRef.current = setTimeout(poll, pollDelay(POLL_MS)); // 1 s hidden (7.4)
+          }
         });
     }
 

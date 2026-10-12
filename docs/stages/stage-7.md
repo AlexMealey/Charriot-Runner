@@ -1,17 +1,18 @@
 # Stage 7 — TTL, hardening, docs
 
-Status: not started
+Status: steps 7.1–7.6 done and reviewed by reading (2026-10-12) —
+acceptance pending a runtime pass
 Goal: old rooms quietly crumble to dust, rough edges read kindly, and the
 README tells the truth.
 
 Progress (see steps below; checked = done and reviewed):
 
-- [ ] 7.1 Garbage collection (6 h)
-- [ ] 7.2 Expired room → dust scroll
-- [ ] 7.3 Error wording
-- [ ] 7.4 Poll backoff on hidden tabs
-- [ ] 7.5 Remove the local-sim leftovers
-- [ ] 7.6 README
+- [x] 7.1 Garbage collection (6 h)
+- [x] 7.2 Expired room → dust scroll
+- [x] 7.3 Error wording
+- [x] 7.4 Poll backoff on hidden tabs
+- [x] 7.5 Remove the local-sim leftovers
+- [x] 7.6 README
 
 Files in play (touch nothing else):
 
@@ -20,6 +21,15 @@ Files in play (touch nothing else):
 - `public/index.html`
 - `public/css/main.css`
 - `README.md`
+
+> Since this list was written, the app was split into modules
+> (`api/actions/`, `public/js/`). The steps therefore touched the split
+> files that now hold that code: `api/actions/{create_room,join_room,
+> create_practice}.php` (7.1), `public/js/components/JoinGate.js` (7.2),
+> `public/js/net.js` (7.3, 7.4), `public/js/components/RaceView.js` (7.4);
+> 7.5 deleted `public/js/random.js`, `public/js/simulation.js` and
+> `api/actions/seed.php`. Exports (7.1) do not exist yet (deferred, §7), so
+> GC covers rooms and practice races only.
 
 > **Working rules — read first, keep to them**
 >
@@ -88,8 +98,8 @@ Done when: README matches the shipped API exactly.
       card.
 - [ ] All listed error codes read as medieval one-liners.
 - [ ] Hidden tabs poll slowly; visible tabs stay at 250 ms.
-- [ ] README matches the shipped API.
-- [ ] No Node/npm/npx introduced anywhere.
+- [x] README matches the shipped API.
+- [x] No Node/npm/npx introduced anywhere.
 
 ## Not in this stage
 

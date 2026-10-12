@@ -3,3 +3,4 @@
 .vscode/
 *.log
 AGENTS.MD
+docs/failed-commands.md

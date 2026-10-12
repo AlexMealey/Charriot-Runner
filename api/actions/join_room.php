@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 function action_join_room(): void
 {
+    RoomStore::gc(); // rooms and races idle for 6 h crumble first (7.1)
     $body = Http::body();
     $roomId = is_string($body['roomId'] ?? null) ? $body['roomId'] : '';
     $nickname = is_string($body['nickname'] ?? null) ? trim($body['nickname']) : '';

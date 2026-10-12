@@ -2,6 +2,11 @@
 
 declare(strict_types=1);
 
+// Errors go to the log, never into a reply (7.3): a stray warning would
+// corrupt the JSON, and raw PHP text must never reach a player.
+ini_set('display_errors', '0');
+ini_set('log_errors', '1');
+
 /**
  * JSON API front controller: headers and action dispatch. Same-origin only
  * — the SPA is served by this very container, so no CORS headers (code
@@ -20,7 +25,6 @@ require __DIR__ . '/lib/Tracks.php';
 
 require __DIR__ . '/actions/health.php';
 require __DIR__ . '/actions/echo.php';
-require __DIR__ . '/actions/seed.php';
 require __DIR__ . '/actions/hello.php';
 require __DIR__ . '/actions/create_room.php';
 require __DIR__ . '/actions/join_room.php';
@@ -39,12 +43,17 @@ require __DIR__ . '/actions/set_ready.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
+// Anything thrown still answers in the spec §5 envelope; the detail is logged.
+set_exception_handler(function (Throwable $e): void {
+    error_log((string) $e);
+    Http::error(500, 'server_error', 'The sages stumbled — try once more.');
+});
+
 $action = $_GET['action'] ?? 'hello';
 
 $handlers = [
     'health' => 'action_health',
     'echo' => 'action_echo',
-    'seed' => 'action_seed',
     'hello' => 'action_hello',
     'create_room' => 'action_create_room',
     'join_room' => 'action_join_room',

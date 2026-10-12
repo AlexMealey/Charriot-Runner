@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 function action_create_practice(): void
 {
+    RoomStore::gc(); // rooms and races idle for 6 h crumble first (7.1)
     $body = Http::body();
     // Validated like create_room, not clamped (code review M3); an absent
     // count keeps the old default of four.
