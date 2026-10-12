@@ -165,9 +165,11 @@ function RaceView(props) {
             }
             // The room itself turns "finished" once the race is run: that
             // verdict raises the results card, and `accept` above has
-            // already fallen the 500 ms feed silent (5.1).
+            // already fallen the 500 ms feed silent (5.1). The card keeps
+            // its raceNo so the watch below knows a newer race (5.4).
             if (data.status === "finished" && data.race) {
-              setResults({
+              raiseResults({
+                raceNo: data.raceNo,
                 placements: data.race.placements,
                 names: data.names,
                 participants: data.participants,
@@ -179,7 +181,7 @@ function RaceView(props) {
             // no participants ride along, so no seers block, and Race
             // Again walks back to the picker instead of calling rematch.
             if (data.finished >= data.n) {
-              setResults({
+              raiseResults({
                 placements: data.placements,
                 names: data.names,
               });
@@ -196,6 +198,15 @@ function RaceView(props) {
         });
     }
 
+    // The picture runs one poll behind the ticks (4.10): raise the card
+    // once it has caught up, so the last chariots cross the line in plain
+    // sight rather than under the parchment.
+    function raiseResults(res) {
+      setTimeout(function () {
+        if (aliveRef.current) setResults(res);
+      }, LAG_MS);
+    }
+
     // Both feeds start polling at once: a room rides room_state (step
     // 4.4); practice rides the id in /?practice=<id> — the landing's Ride!
     // opened that race, and a reload keeps the same URL, so the same race.
@@ -203,9 +214,11 @@ function RaceView(props) {
 
     /* A rematch begins the view anew (5.4): the card drops, the segment
      * refs blank so the fresh race snaps in from tick 0, and both loops
-     * spin again — the host's api answer and a bystander's slow watch
-     * both land here. */
+     * spin again — the host's api answer and the slow watch both land
+     * here. Only a finished view restarts, so a second caller racing the
+     * first cannot spin a second feed. */
     function restart() {
+      if (!doneRef.current) return;
       clearTimeout(timerRef.current);
       doneRef.current = false;
       prevRef.current = null;
@@ -227,21 +240,29 @@ function RaceView(props) {
     };
   }, []);
 
-  /* Bystanders keep watch while the card stands (5.4): the fast feed
+  /* Every browser keeps watch while the card stands (5.4): the fast feed
    * stops at the finish, so this slow room_state poll — the only traffic
-   * left — is what notices the host's rematch; the card then drops on the
-   * same reset the host takes from its api answer. The host's own browser
-   * needs no watch: its button answers. */
+   * left — is what notices a rematch; the card then drops on the same
+   * reset the host takes from its api answer. A newer raceNo is the sign,
+   * not "racing": a sleeping phone may wake after the rematch has already
+   * run, and a host's second tab has no button answer of its own. A room
+   * gone to dust takes the card with it. */
   useEffect(function () {
     if (!props.roomId || !results) return;
-    if (localStorage.getItem("chariot.host." + props.roomId)) return;
     const q =
       "api/?action=room_state&room=" + encodeURIComponent(props.roomId);
-    return poll(q, 2000, function (data) {
-      if (data.status === "racing" && restartRef.current) {
-        restartRef.current();
+    return poll(
+      q,
+      2000,
+      function (data) {
+        if (data.raceNo !== results.raceNo && restartRef.current) {
+          restartRef.current();
+        }
+      },
+      function () {
+        setLost(true);
       }
-    });
+    );
   }, [results]);
 
   if (lost) return <DustScroll navigate={props.navigate} />;

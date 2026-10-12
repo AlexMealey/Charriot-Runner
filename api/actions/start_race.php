@@ -40,10 +40,12 @@ function action_start_race(): void
         $newLane = 0;
         $laneMap = [];
         $riderNames = [];
+        $riderIds = [];
         foreach ($riders as $i => $oldLane) {
             $laneMap[$oldLane] = $newLane;
             $doc['participants'][$i]['lane'] = $newLane++;
             $riderNames[] = $doc['participants'][$i]['nickname'];
+            $riderIds[] = $doc['participants'][$i]['id'];
         }
         // Wagers follow their rider into the renumbered lanes; one on a
         // lane no rider holds any more is void.
@@ -58,9 +60,11 @@ function action_start_race(): void
         $race['seed'] = base64_encode(pack('N', $seed));
         $race['startedAt'] = microtime(true);
         $race['finishedAt'] = null;
-        // Nicknames by lane, frozen at the start (4.2): later joins, leaves
-        // and re-attaches can never relabel a chariot of this race.
+        // Nicknames and participant ids by lane, frozen at the start (4.2):
+        // later joins, leaves and re-attaches can never relabel a chariot
+        // of this race, and a rematch knows whom each wager backed (5.3).
         $race['names'] = $riderNames;
+        $race['riders'] = $riderIds;
         $doc['race'] = $race;
         $doc['status'] = 'racing';
         $doc['updatedAt'] = date(DATE_ATOM);

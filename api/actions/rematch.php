@@ -43,9 +43,13 @@ function action_rematch(): void
         asort($riders);
         $newLane = 0;
         $riderNames = [];
+        $riderIds = [];
+        $newLaneOf = []; // participant id → lane in the race about to run
         foreach (array_keys($riders) as $i) {
+            $newLaneOf[$doc['participants'][$i]['id']] = $newLane;
             $doc['participants'][$i]['lane'] = $newLane++;
             $riderNames[] = $doc['participants'][$i]['nickname'];
+            $riderIds[] = $doc['participants'][$i]['id'];
         }
         // Archived placements label themselves from the nicknames frozen
         // into the finished race at its start (4.2) — never from the
@@ -86,13 +90,30 @@ function action_rematch(): void
             'predictions' => $predictions,
             'ticks' => 'race-' . $doc['raceNo'] . '.ticks.jsonl.gz',
         ];
+        // A wager once sealed stands for the meeting, so — judged and
+        // archived above on the old lanes — it now follows its rider into
+        // the renumbered ones: whoever held the backed lane in the race
+        // just run. A wager on a rider no longer riding is void. A race
+        // stored before riders were frozen keeps its wagers as they stand.
+        $ranBy = $doc['race']['riders'] ?? null;
+        if ($ranBy !== null) {
+            foreach ($doc['participants'] as $i => $p) {
+                $pick = $p['prediction'] ?? null;
+                if ($pick !== null) {
+                    $id = $ranBy[$pick] ?? null;
+                    $doc['participants'][$i]['prediction'] = $id !== null ? ($newLaneOf[$id] ?? null) : null;
+                }
+            }
+        }
         $doc['raceNo']++;
         $seed = RaceEngine::prngNew();
         $race = RaceEngine::create($seed, count($riders));
         $race['seed'] = base64_encode(pack('N', $seed));
         $race['startedAt'] = microtime(true);
         $race['finishedAt'] = null;
-        $race['names'] = $riderNames; // frozen for this race, as in start_race
+        // frozen for this race, as in start_race
+        $race['names'] = $riderNames;
+        $race['riders'] = $riderIds;
         $doc['race'] = $race;
         $doc['status'] = 'racing';
         $doc['updatedAt'] = date(DATE_ATOM);
