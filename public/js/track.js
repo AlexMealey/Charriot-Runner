@@ -85,6 +85,17 @@ function stadiumPath(tr, R) {
  * uniformly into the window — letterboxed, never stretched — and drawn  *
  * two lanes wide whatever the field size.                               *
  * ------------------------------------------------------------------- */
+/* Map images (Stage 9), loaded once per page and drawn when ready. */
+const MAP_IMAGES = {};
+function mapImage(src) {
+  if (!MAP_IMAGES[src]) {
+    const img = new Image();
+    img.src = src;
+    MAP_IMAGES[src] = img;
+  }
+  return MAP_IMAGES[src];
+}
+
 function buildCourse(w, h, plot) {
   const vb = String(plot.viewBox || "0 0 1000 600")
     .split(/[\s,]+/)
@@ -108,11 +119,27 @@ function buildCourse(w, h, plot) {
   if (plot.loop && pts.length > 1) {
     lapPx += Math.hypot(pts[0].x - pts[pts.length - 1].x, pts[0].y - pts[pts.length - 1].y);
   }
-  const laneW = Math.max(10, Math.min(26, 22 * scale));
-  const horseH = Math.max(18, Math.min(32, laneW * 1.25));
+  // a map course (Stage 9) lays its loop over the map's own roads: narrow
+  // lanes, the map image behind, laid exactly over the viewBox
+  const isMap = !!plot.image;
+  const laneW = isMap
+    ? Math.max(6, Math.min(12, 4 * scale))
+    : Math.max(10, Math.min(26, 22 * scale));
+  const horseH = isMap
+    ? Math.max(18, Math.min(28, laneW * 2.2))
+    : Math.max(18, Math.min(32, laneW * 1.25));
   const first = plot.segments && plot.segments[0];
   return {
     course: true,
+    map: isMap
+      ? {
+          img: mapImage(plot.image),
+          x: ox + vb[0] * scale,
+          y: oy + vb[1] * scale,
+          w: vb[2] * scale,
+          h: vb[3] * scale,
+        }
+      : null,
     pts: pts,
     loop: !!plot.loop,
     laneW: laneW,

@@ -22,14 +22,17 @@ if (PHP_SAPI !== 'cli') {
 
 require __DIR__ . '/../lib/RaceEngine.php';
 require __DIR__ . '/../lib/Tracks.php';
+require __DIR__ . '/../lib/Maps.php';
 
 $races = max(11, (int) ($argv[1] ?? 220));
 $slugs = array_keys(RaceEngine::HORSES);
 $stable = count($slugs);
 
 foreach (Tracks::all() as $listed) {
-    $plot = Tracks::load($listed['slug']);
-    foreach ($plot['loop'] ? [1, 3] : [1] as $laps) {
+    if ($listed['slug'] === 'map:*') {
+        continue; // each map is run on its own
+    }
+    foreach ($listed['loop'] ? [1, 3] : [1] as $laps) {
         $wins = array_fill_keys($slugs, 0);
         $starts = array_fill_keys($slugs, 0);
         $seconds = array_fill_keys($slugs, 0.0);
@@ -39,13 +42,9 @@ foreach (Tracks::all() as $listed) {
             for ($j = 0; $j < 8; $j++) {
                 $field[] = $slugs[($k + $j) % $stable];
             }
-            $race = RaceEngine::create(RaceEngine::prngNew(), 8, [
-                'mode' => 'custom',
-                'horses' => $field,
-                'track' => $plot['slug'],
-                'laps' => $laps,
-                'segments' => $plot['segments'],
-            ]);
+            // a map course rides a fresh loop every race, as in play
+            $seed = RaceEngine::prngNew();
+            $race = RaceEngine::create($seed, 8, Tracks::raceOptions($listed['slug'], $laps, $field, $seed));
             $finishTick = [];
             while ($race['finished'] < $race['n']) {
                 RaceEngine::step($race);
@@ -64,7 +63,7 @@ foreach (Tracks::all() as $listed) {
                 }
             }
         }
-        printf("\n%s × %d lap%s — %d races\n", $plot['name'], $laps, $laps > 1 ? 's' : '', $races);
+        printf("\n%s × %d lap%s — %d races\n", $listed['name'], $laps, $laps > 1 ? 's' : '', $races);
         printf("  %-18s %9s %9s\n", 'horse', 'win/fair', 'mean s');
         foreach ($slugs as $slug) {
             $share = $starts[$slug] > 0 ? $wins[$slug] / $starts[$slug] * 8 : 0.0;

@@ -24,6 +24,8 @@ final class Tracks
     private const TURN_RATE = 0.0025;
     /** Straight or turn runs shorter than this fold into their neighbours. */
     private const MIN_RUN = 30.0;
+    /** Most laps a horses race may run. */
+    public const MAX_LAPS = 20;
     /** Most points a client plot carries. */
     private const CLIENT_POINTS = 400;
 
@@ -40,7 +42,7 @@ final class Tracks
                 $out[] = ['slug' => $plot['slug'], 'name' => $plot['name'], 'loop' => $plot['loop']];
             }
         }
-        return $out;
+        return array_merge($out, Maps::all()); // map courses (Stage 9) after the drawn ones
     }
 
     /**
@@ -78,18 +80,9 @@ final class Tracks
             return null;
         }
         [$raw, $loop] = $flat;
-        [$cum, $length] = self::cumulative($raw);
-        if ($length <= 0.0) {
+        $plot = self::plot($raw, $loop);
+        if ($plot === null) {
             return null;
-        }
-        $count = max(2, (int) round($length / self::STEP));
-        $points = self::resample($raw, $cum, $length, $count);
-        $segments = self::segments($points, $length, $loop);
-        $turn = 0.0;
-        foreach ($segments as $seg) {
-            if ($seg['kind'] === 'turn') {
-                $turn += $seg['to'] - $seg['from'];
-            }
         }
         $name = trim($root->getAttribute('data-name'));
         return self::$cache[$slug] = [
@@ -98,11 +91,65 @@ final class Tracks
             'loop' => $loop,
             'viewBox' => trim($root->getAttribute('viewBox')),
             'd' => $d,
-            'length' => $length,
-            'turnShare' => $turn,
-            'segments' => $segments,
-            'points' => $points,
-        ];
+        ] + $plot;
+    }
+
+    /**
+     * A polyline (a loop ends where it began) plotted for the sim and the
+     * race view: {length, turnShare, segments, points} — points evenly
+     * spaced every `step` units, segments as fractions of one lap. Options
+     * (defaults are the SVG courses'): `step`, `turnRate` (heading change
+     * per unit above which a sample turns), `minRun` (shorter runs fold
+     * into their neighbours) and `span` (samples each side the heading is
+     * read over — map loops, plotted from pixels, need a few). Null when
+     * the line has no length. Map loops (Maps.php) are plotted here too.
+     */
+    public static function plot(array $raw, bool $loop, array $opt = []): ?array
+    {
+        [$cum, $length] = self::cumulative($raw);
+        if ($length <= 0.0) {
+            return null;
+        }
+        $count = max(2, (int) round($length / ($opt['step'] ?? self::STEP)));
+        $points = self::resample($raw, $cum, $length, $count);
+        $segments = self::segments(
+            $points,
+            $length,
+            $loop,
+            (float) ($opt['turnRate'] ?? self::TURN_RATE),
+            (float) ($opt['minRun'] ?? self::MIN_RUN),
+            (int) ($opt['span'] ?? 1)
+        );
+        $turn = 0.0;
+        foreach ($segments as $seg) {
+            if ($seg['kind'] === 'turn') {
+                $turn += $seg['to'] - $seg['from'];
+            }
+        }
+        return ['length' => $length, 'turnShare' => $turn, 'segments' => $segments, 'points' => $points];
+    }
+
+    /**
+     * The options a horses race is created with (RaceEngine::create): the
+     * course's straight/turn table for the sim, and for a map course
+     * ("map:<slug>" or "map:*") the whole loop picked from $seed, frozen
+     * into the race as `course`. Null when the course is unknown.
+     */
+    public static function raceOptions(string $track, int $laps, array $horses, int $seed): ?array
+    {
+        $opts = ['mode' => 'custom', 'horses' => $horses, 'laps' => $laps];
+        if (Maps::isMap($track)) {
+            $course = Maps::course($track, $seed);
+            if ($course === null) {
+                return null;
+            }
+            return $opts + ['track' => $course['track'], 'segments' => $course['segments'], 'course' => $course];
+        }
+        $plot = self::load($track);
+        if ($plot === null) {
+            return null;
+        }
+        return $opts + ['track' => $plot['slug'], 'segments' => $plot['segments']];
     }
 
     /**
@@ -134,7 +181,7 @@ final class Tracks
      * Mode, course and laps from a create_room / create_practice body:
      * [setup, null] on success, [null, message] otherwise. Classic keeps
      * just ['mode' => 'classic']; horses ('custom') adds a known course
-     * slug and laps 1–3 — forced to 1 on a course that does not loop.
+     * slug and laps 1–MAX_LAPS — forced to 1 on a course that does not loop.
      */
     public static function setup(array $body): array
     {
@@ -146,13 +193,18 @@ final class Tracks
             return [null, 'The rules of the race are Classic or Horses.'];
         }
         $slug = $body['track'] ?? 'hippodrome';
-        $plot = is_string($slug) ? self::load($slug) : null;
+        if (is_string($slug) && Maps::isMap($slug)) {
+            // a map course loops by construction: a fresh loop every race
+            $plot = Maps::exists($slug) ? ['loop' => true] : null;
+        } else {
+            $plot = is_string($slug) ? self::load($slug) : null;
+        }
         if ($plot === null) {
             return [null, 'No such course is known to the heralds.'];
         }
         $laps = $body['laps'] ?? 1;
-        if (!is_int($laps) || $laps < 1 || $laps > 3) {
-            return [null, 'A race runs one to three laps.'];
+        if (!is_int($laps) || $laps < 1 || $laps > self::MAX_LAPS) {
+            return [null, 'A race runs one to ' . self::MAX_LAPS . ' laps.'];
         }
         return [['mode' => 'custom', 'track' => $slug, 'laps' => $plot['loop'] ? $laps : 1], null];
     }
@@ -339,8 +391,14 @@ final class Tracks
      * than MIN_RUN fold into the run before them (the first into the one
      * after), so a slight wobble never splits a straight.
      */
-    private static function segments(array $pts, float $length, bool $loop): array
-    {
+    private static function segments(
+        array $pts,
+        float $length,
+        bool $loop,
+        float $turnRate = self::TURN_RATE,
+        float $minRun = self::MIN_RUN,
+        int $span = 1
+    ): array {
         $n = count($pts);
         $ds = $length / $n;
         $head = [];
@@ -351,10 +409,12 @@ final class Tracks
                 : atan2($next[1] - $pts[$j][1], $next[0] - $pts[$j][0]);
         }
         $runs = [];
+        // the heading change across samples j-span .. j+span-1 (span 1:
+        // one sample to the next, as the SVG courses have always read it)
+        $at = fn (int $k): float => $loop ? $head[(($k % $n) + $n) % $n] : $head[max(0, min($n - 1, $k))];
         for ($j = 0; $j < $n; $j++) {
-            $prev = $j > 0 ? $head[$j - 1] : ($loop ? $head[$n - 1] : $head[0]);
-            $dh = fmod($head[$j] - $prev + 3 * M_PI, 2 * M_PI) - M_PI;
-            $kind = abs($dh) / $ds > self::TURN_RATE ? 'turn' : 'straight';
+            $dh = fmod($at($j + $span - 1) - $at($j - $span) + 3 * M_PI, 2 * M_PI) - M_PI;
+            $kind = abs($dh) / ((2 * $span - 1) * $ds) > $turnRate ? 'turn' : 'straight';
             $last = count($runs) - 1;
             if ($last >= 0 && $runs[$last]['kind'] === $kind) {
                 $runs[$last]['to'] = ($j + 1) * $ds;
@@ -366,7 +426,7 @@ final class Tracks
         while ($changed && count($runs) > 1) {
             $changed = false;
             for ($r = 0; $r < count($runs); $r++) {
-                if ($runs[$r]['to'] - $runs[$r]['from'] < self::MIN_RUN) {
+                if ($runs[$r]['to'] - $runs[$r]['from'] < $minRun) {
                     $runs[$r]['kind'] = $runs[$r > 0 ? $r - 1 : $r + 1]['kind'];
                     $changed = true;
                 }

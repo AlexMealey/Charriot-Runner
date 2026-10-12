@@ -51,6 +51,9 @@ function horsesFields(array $race): array
         'track' => $race['track'],
         'laps' => $race['laps'],
         'horses' => $race['horses'],
+        // a map course (Stage 9) is a fresh loop each race: this key
+        // changes with every race, so clients know to fetch `course` anew
+        'courseKey' => isset($race['course']['points']) ? (string) ($race['startedAt'] ?? '') : '',
     ];
 }
 

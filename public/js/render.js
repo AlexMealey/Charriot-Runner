@@ -204,6 +204,10 @@ function drawOval(ctx, tr, state, n, T) {
  * start grid is drawn only — two abreast in slot order, each row a little
  * further back — and closes up over the opening straight. */
 function drawCourse(ctx, w, tr, state, T) {
+  // a map course (Stage 9): the map first, its roads showing through
+  if (tr.map && tr.map.img.complete && tr.map.img.naturalWidth) {
+    ctx.drawImage(tr.map.img, tr.map.x, tr.map.y, tr.map.w, tr.map.h);
+  }
   const pts = tr.pts;
   const line = new Path2D();
   line.moveTo(pts[0].x, pts[0].y);
@@ -212,13 +216,15 @@ function drawCourse(ctx, w, tr, state, T) {
   ctx.save();
   ctx.lineJoin = "round";
   ctx.lineCap = "round";
-  ctx.strokeStyle = T.trackEdge;
-  ctx.lineWidth = tr.laneW * 2 + 10;
+  // on a map the loop is a highlighted band over the road; elsewhere the
+  // stone-edged bed of a drawn course
+  ctx.strokeStyle = tr.map ? "rgba(0, 0, 0, 0.55)" : T.trackEdge;
+  ctx.lineWidth = tr.laneW * 2 + (tr.map ? 4 : 10);
   ctx.stroke(line);
-  ctx.strokeStyle = T.track;
+  ctx.strokeStyle = tr.map ? "rgba(233, 200, 119, 0.5)" : T.track;
   ctx.lineWidth = tr.laneW * 2;
   ctx.stroke(line);
-  ctx.strokeStyle = T.laneLine;
+  ctx.strokeStyle = tr.map ? "rgba(20, 16, 12, 0.55)" : T.laneLine;
   ctx.lineWidth = 1.5;
   ctx.setLineDash([8, 6]);
   ctx.stroke(line);

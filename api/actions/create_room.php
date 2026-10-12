@@ -18,7 +18,7 @@ function action_create_room(): void
         Http::error(400, 'bad_request', 'Chariots number 2 to 8 and souls 2 to 16 — never fewer souls than chariots.');
         return;
     }
-    // Rules of the race (8.3): classic, or horses on a course for 1–3 laps.
+    // Rules of the race (8.3): classic, or horses on a course for 1–20 laps.
     [$setup, $problem] = Tracks::setup($body);
     if ($setup === null) {
         Http::error(400, 'bad_request', $problem);

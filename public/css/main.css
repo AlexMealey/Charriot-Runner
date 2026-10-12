@@ -617,19 +617,200 @@ select:disabled {
 
 .steed-row {
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  align-items: stretch;
   gap: 10px;
 }
 
-.steed-row select {
-  flex: 1;
+.steed-row button.ready {
+  align-self: center;
+  padding: 9px 18px;
+  font-size: 13px;
+}
+
+/* the steed picker (SteedPicker.js): a trigger dressed as an input, and a
+ * plaque-dark list of two-line options — name above, stat pips below */
+.steed-picker {
+  position: relative;
+}
+
+.steed-picker .steed-trigger {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 12px;
+  font-family: "IM Fell English", Georgia, serif;
+  font-weight: normal;
+  font-size: 16px;
+  letter-spacing: normal;
+  text-transform: none;
+  text-align: left;
+  text-shadow: none;
+  color: var(--ink);
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--gold-dim);
+  border-radius: 6px;
+  box-shadow: none;
+}
+
+.steed-picker .steed-trigger::before,
+.steed-picker .steed-trigger::after {
+  content: none;
+}
+
+.steed-picker .steed-trigger:hover:not(:disabled),
+.steed-picker .steed-trigger:focus-visible,
+.steed-picker.open .steed-trigger {
+  outline: none;
+  transform: none;
+  color: var(--ink);
+  border-color: var(--gold);
+  box-shadow: 0 0 0 1px rgba(201, 164, 92, 0.35);
+}
+
+.steed-picker .steed-trigger:disabled {
+  opacity: 0.6;
+}
+
+.steed-picker .caret {
+  margin-left: auto;
+  color: var(--gold);
+  font-size: 14px;
+}
+
+.steed-list {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 5;
+  max-height: 320px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  text-align: left;
+  background: linear-gradient(180deg, var(--plaque-hi) 0%, var(--plaque) 100%);
+  border: 1px solid var(--gold-dim);
+  border-radius: 6px;
+  box-shadow: 0 10px 28px var(--shadow);
+}
+
+.steed-option {
+  padding: 7px 10px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.steed-option.active {
+  background: rgba(201, 164, 92, 0.16);
+  border-color: var(--lane-line);
+}
+
+.steed-option.chosen .steed-name::after {
+  content: " ✓";
+  color: var(--gold-bright);
+}
+
+.steed-line {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   min-width: 0;
 }
 
-.steed-row button.ready {
+.horse-icon {
   flex: 0 0 auto;
-  padding: 9px 18px;
-  font-size: 13px;
+  width: 28px;
+  height: 28px;
+}
+
+.horse-icon.random {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  border: 1px solid var(--gold-dim);
+  border-radius: 50%;
+  color: var(--gold);
+  font-family: Cinzel, Georgia, serif;
+  font-size: 14px;
+}
+
+.steed-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.steed-name {
+  color: var(--ink);
+  font-size: 15px;
+  line-height: 1.2;
+}
+
+.steed-note {
+  color: var(--ink-dim);
+  font-size: 12px;
+  font-style: italic;
+}
+
+.steed-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px 12px;
+  color: var(--ink-dim);
+  font-size: 11px;
+}
+
+.steed-stats .stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.steed-stats em {
+  font-style: normal;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.steed-stats .pips b {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 2px;
+  border: 1px solid var(--gold-dim);
+  border-radius: 50%;
+}
+
+.steed-stats .pips b.on {
+  background: var(--gold-bright);
+  border-color: var(--gold-bright);
+}
+
+.steed-stats .bar {
+  display: inline-block;
+  width: 36px;
+  height: 5px;
+  border: 1px solid var(--gold-dim);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.steed-stats .bar b {
+  display: block;
+  height: 100%;
+  background: var(--gold);
+}
+
+.steed-stats .num {
+  color: var(--ink);
 }
 
 .steed-row button.ready.on {

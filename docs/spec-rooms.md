@@ -197,7 +197,7 @@ stamps `finishedAt`; later polls keep the frozen final frame.
 
 Note (Stage 8 — horses mode): `create_room` and `create_practice` take
 optional `mode` (`classic` default | `custom`), `track` (course slug,
-default `hippodrome`) and `laps` (1–3; 1 on a course that does not loop),
+default `hippodrome`) and `laps` (1–20; 1 on a course that does not loop),
 stored as `config.mode` / `config.track` / `config.laps`. New GET actions:
 `tracks` → `{tracks: [{slug, name, loop}]}`; `track` (`slug`) → the course
 plot `{slug, name, loop, viewBox, d, length, turnShare, segments,
@@ -212,6 +212,14 @@ only: `set_horse {roomId, token, horse}` (slug or `null` = Random; 409
 a horses race block (and practice snapshot) adds `mode`, `track`, `laps`,
 `horses`, and its racers carry `side` (0 | 1, the lane drawn on the
 two-lane course).
+
+Note (Stage 9 — map courses): `track` may also be `map:<slug>` (or
+`map:*`, any map) — every race then rides a fresh loop through that map's
+roads, picked from the race seed and frozen into `race.course` (points,
+straight/turn table, map image and viewBox, `baseSpeed`). `tracks` lists
+the maps; the new GET `course` (`room` or `practice`) returns the current
+race's loop (404 `course_not_found`), and a horses race block's
+`courseKey` changes with every race so clients refetch it.
 
 **Deferred with §7 (export):** `request_export` `{roomId?, practiceId?, raceNo}`
 → `{jobId}`, `export_status` `job` → `{status, url?}`, `export_download` `job`
@@ -325,6 +333,7 @@ just as importantly, what not to.
 | 6 — Custom tracks & racers (spec + questions) | [stages/stage-6.md](stages/stage-6.md) | **decided** — implemented by Stage 8 |
 | 7 — TTL, hardening, docs | [stages/stage-7.md](stages/stage-7.md) | steps done (7.1–7.6), acceptance pending runtime |
 | 8 — Horses mode (two-lane courses + horses) | [stages/stage-8.md](stages/stage-8.md) | steps done (8.1–8.10), acceptance pending runtime |
+| 9 — Map courses (random loops through road maps) | [stages/stage-9.md](stages/stage-9.md) | steps done (9.5–9.11), acceptance pending runtime |
 
 ---
 

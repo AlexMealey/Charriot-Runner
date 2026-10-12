@@ -14,18 +14,22 @@ function action_create_practice(): void
         return;
     }
     // Rules of the race (8.9): classic, or horses — every horse drawn from
-    // the seed — on a course for 1–3 laps.
+    // the seed — on a course for 1–20 laps.
     [$setup, $problem] = Tracks::setup($body);
     if ($setup === null) {
         Http::error(400, 'bad_request', $problem);
         return;
     }
+    $seed = RaceEngine::prngNew();
     $opts = [];
     if ($setup['mode'] === 'custom') {
-        $plot = Tracks::load($setup['track']);
-        $opts = $setup + ['horses' => array_fill(0, $n, null), 'segments' => $plot['segments']];
+        $opts = Tracks::raceOptions($setup['track'], $setup['laps'], array_fill(0, $n, null), $seed);
+        if ($opts === null) {
+            Http::error(404, 'track_not_found', 'The course hath vanished from the scrolls.');
+            return;
+        }
     }
-    $doc = RaceEngine::create(RaceEngine::prngNew(), $n, $opts);
+    $doc = RaceEngine::create($seed, $n, $opts);
     $doc['practiceId'] = bin2hex(random_bytes(8));
     $doc['startedAt'] = microtime(true);
     $doc['finishedAt'] = null;

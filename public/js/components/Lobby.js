@@ -189,7 +189,7 @@ function Lobby(props) {
     });
   }
 
-  /* Choosing a steed (8.4): "" from the select means Random (null). */
+  /* Choosing a steed (8.4): null means Random. */
   function chooseSteed(value) {
     const horse = value || null;
     setSteed(horse);
@@ -279,23 +279,13 @@ function Lobby(props) {
           <div className="steedpick">
             <h2>Thy steed</h2>
             <div className="steed-row">
-              <select
-                value={steed || ""}
+              <SteedPicker
+                stable={stable}
+                value={steed}
+                color={RACERS[me.lane].color}
                 disabled={readyNow}
-                onChange={function (e) {
-                  chooseSteed(e.target.value);
-                }}
-              >
-                <option value="">Random — the stable master chooses</option>
-                {stable.map(function (h) {
-                  return (
-                    <option key={h.slug} value={h.slug}>
-                      {h.name} — canter {h.canter} · turning {h.turning} ·
-                      gallop {h.gallop} · stamina {h.stamina}
-                    </option>
-                  );
-                })}
-              </select>
+                onChange={chooseSteed}
+              />
               <button
                 className={readyNow ? "ready on" : "ready"}
                 onClick={toggleReady}

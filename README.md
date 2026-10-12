@@ -5,7 +5,8 @@ rematches, and two kinds of race:
 
 - **Classic**: chariots on an oval. The gods (the race seed) decide the order.
 - **Horses**: riders pick horses with different stats and race them on a
-  server-side course with two lanes. The horses decide the order.
+  server-side course with two lanes — a drawn course, or a fresh loop
+  through the roads of a map every race. The horses decide the order.
 
 It's a single-page React app loaded from a CDN plus a small PHP JSON API,
 served by one Apache container. **Docker is the only thing you install.**
@@ -80,6 +81,17 @@ Tune `HORSES` / `SPEED` in `api/lib/RaceEngine.php` from the output and log
 the result under *Balance log* in `docs/stages/stage-8.md`. The tool only
 runs from the command line; the web server refuses `api/tools/`.
 
+### Map road extractor
+
+Turns a map image's roads into the graph that race loops are picked from
+(see *Adding a map*). It prints to stdout, so redirect it into the repo;
+`-T` keeps the output clean:
+
+```sh
+docker compose exec -T web php api/tools/extract_roads.php <slug> > api/maps/<slug>.json
+docker compose exec -T web php api/tools/extract_roads.php <slug> --preview > roads.png
+```
+
 ### Lint the PHP
 
 There's no PHP on the host, so lint inside the container:
@@ -104,7 +116,7 @@ docker compose cp web:/var/www/html/data ./data-backup     # copy everything out
 
 - **Create a Room**: choose the chariots (2–8), the seats, and the rules:
   - *Classic*;
-  - *Horses*, with a course and 1–3 laps.
+  - *Horses*, with a course and 1–20 laps.
 
   Share the link. Everyone picks a name (the dice rolls one) and lands in
   the lobby. Riders beyond the chariot count become onlookers. Everyone can
@@ -147,6 +159,7 @@ docker compose cp web:/var/www/html/data ./data-backup     # copy everything out
 | Hippodrome | the classic oval | ~35 % | all-rounders |
 | Long Straight | stretched oval, quick bends | ~20 % | gallopers with stamina |
 | Tight Circuit | rounded box with a notch, eight bends | ~50 % | fast turners |
+| Map courses: Emerald River, Grassland, Khamsin, La Grande Gloire, Thermopylae | a fresh loop through the map's roads each race | ~15–45 % | depends on the loop |
 
 ## Adding a course
 
@@ -169,6 +182,39 @@ centre line:
 
 Rebuild, and the course appears in the pickers.
 
+## Adding a map
+
+A map is a top-down image whose **light lines are the roads**. Each race on
+it rides a fresh loop through those roads, and horses keep a steady pace,
+so a longer loop — or a bigger map — makes a longer race.
+
+1. Put the image in `public/maps/<slug>.webp` (or `.png`).
+2. Add `public/maps/<slug>.json`:
+
+   ```json
+   { "name": "Emerald River", "size": "small" }
+   ```
+
+   `size` sets the race length: `small` ≈ 40 s to the winner over a typical
+   loop, `medium` ≈ 80 s, `large` ≈ 2 min (per lap). For exact control,
+   `"secondsAcross"` is the seconds a canter takes to cross the map's
+   width. If a map's roads come out wrong, tune `greyMin` / `greyMax`
+   (the roads' raw grey, ignoring transparency; default 98–140) and
+   `opacityMin` (how opaque road ink must be, 0–255; default 80). Maps
+   differ: Thermopylae's roads sit at 100–150, Khamsin's at 88–118 — the
+   `--preview` image shows what was found.
+3. Rebuild (`docker compose up --build -d`) so the container has it, then
+   extract and check the roads (see *Map road extractor*):
+
+   ```sh
+   docker compose exec -T web php api/tools/extract_roads.php <slug> > api/maps/<slug>.json
+   docker compose exec -T web php api/tools/extract_roads.php <slug> --preview > roads.png
+   ```
+
+4. Rebuild once more. The map appears in the pickers as
+   "<Name> — a new road each race"; with two or more maps, "Any map" joins
+   them.
+
 ## Configuration
 
 There are no settings files; the knobs live in the code. Rebuild after
@@ -183,6 +229,8 @@ changing any of them.
 | Race view poll rate | `POLL_MS` in `public/js/components/RaceView.js` | 500 ms |
 | Slowest poll in a hidden tab | `pollDelay` in `public/js/net.js` | 1 s |
 | Horse stats and speed table | `HORSES` / `SPEED` in `api/lib/RaceEngine.php` | see above |
+| A map's race length | `size` / `secondsAcross` in `public/maps/<slug>.json` (re-extract after) | per map |
+| Map loop lengths | `MIN_LOOP` / `MAX_LOOP` in `api/lib/Maps.php` | 1.2–3 map widths |
 | Chariots and seats per room | checks in `api/actions/create_room.php` | 2–8 and 2–16 |
 
 ## Troubleshooting
@@ -221,25 +269,32 @@ changing any of them.
     the short poller (slower in hidden tabs), and room-mark parsing
   - `names.js`: herald word-names
   - `routes.js`: query-string routing (`/`, `/?room=`, `/?practice=`)
-  - `components/`: React views: `Landing.js`, `JoinGate.js`, `Lobby.js`,
-    `RaceView.js`, `ResultsCard.js` and `DustScroll.js`
+  - `components/`: React views: `Landing.js`, `JoinGate.js`, `Lobby.js`
+    (with `SteedPicker.js`, the horse drop-down), `RaceView.js`,
+    `ResultsCard.js` and `DustScroll.js`
   - `app.js`: the router shell and mount
 - `api/index.php`: the JSON API front controller (dispatches on `?action=`)
 - `api/actions/`: one handler per action (see the API table below)
 - `api/lib/`:
   - `RaceEngine.php`: the deterministic race sim (classic and horses) and
     the horse roster
-  - `Tracks.php`: the course plotter
+  - `Tracks.php`: the course plotter, and the course options every horses
+    race starts from
+  - `Maps.php`: map road graphs and the seeded loop each race rides
   - `RoomStore.php`: the JSON file store, with locking, atomic writes and
     6-hour garbage collection
   - `Http.php`: body parsing and the error envelope
   - `Snapshots.php`: what clients see, and race catch-up
 - `api/tracks/`: the course SVGs
-- `api/tools/balance.php`: the balance check (command line only)
+- `public/maps/`: map images (drawn behind the race) and their sidecars
+- `api/maps/`: each map's road graph, written by the extractor
+- `api/tools/`: `balance.php` (the balance check) and `extract_roads.php`
+  (the map road extractor), both command line only
 - `data/` (in the container, on the `race-data` volume): rooms, practice
   races and tick histories, written at runtime
 - `docker/vhost.conf`: the Apache vhost. It serves the static frontend and
-  the PHP API, and refuses `data/`, `api/tracks/` and `api/tools/`.
+  the PHP API, and refuses `data/`, `api/tracks/`, `api/maps/` and
+  `api/tools/`.
 - `Dockerfile` / `docker-compose.yml`: the single `web` service on port 1227,
   with the `race-data` volume
 - `docs/`: `spec-rooms.md` (the spec and API contract), `stages/` (the
@@ -269,14 +324,15 @@ Full contract: `docs/spec-rooms.md` §5; build history: `docs/stages/`.
 | `practice_state` | GET | `race` → the practice snapshot |
 | `tracks` | GET | Lists every course |
 | `track` | GET | `slug` → one course's plot (points, straights and turns) |
+| `course` | GET | `room` or `practice` → the map loop the current race rides |
 | `horses` | GET | The horse roster and its stats |
 
 ## Project status
 
 Built in stages; each stage's plan and status is in `docs/stages/`.
 
-- **Stages 1–8 are written:** the race engine, rooms, lobby, shared race,
-  results and rematch, expiry and hardening, and horses mode.
+- **Stages 1–9 are written:** the race engine, rooms, lobby, shared race,
+  results and rematch, expiry and hardening, horses mode, and map courses.
 - **Each stage's acceptance is still pending a run in Docker** — tick the
   boxes in its stage file as you confirm them.
 - **Open for horses mode** (see *Balance log* in

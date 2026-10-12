@@ -16,7 +16,8 @@ function RaceView(props) {
   const fracRef = useRef(1);
   const doneRef = useRef(false);
   const trackRef = useRef(null);
-  // a horses race's course plot (8.7), fetched once per course slug
+  // a horses race's course plot (8.7), fetched once per course — a map
+  // course (Stage 9) once per race, keyed by the snapshot's courseKey
   const plotRef = useRef(null);
   const plotSlugRef = useRef("");
   const restartRef = useRef(null); // the feed effect's start-over (5.4)
@@ -151,8 +152,9 @@ function RaceView(props) {
         nRef.current = data.n;
         trackRef.current = layout(window.innerWidth, window.innerHeight);
       }
-      if (data.mode === "custom" && data.track !== plotSlugRef.current) {
-        loadCourse(data.track);
+      if (data.mode === "custom") {
+        const key = data.track + "|" + (data.courseKey || "");
+        if (key !== plotSlugRef.current) loadCourse(data.track, key);
       }
       if (data.finished >= data.n) {
         doneRef.current = true;
@@ -165,20 +167,32 @@ function RaceView(props) {
     /* A horses race's course comes from the server (8.1/8.7): fetched
      * once per slug, then laid out like the oval. A failed fetch clears
      * the slug so the next snapshot asks again. */
-    function loadCourse(slug) {
-      plotSlugRef.current = slug;
-      fetch("api/?action=track&slug=" + encodeURIComponent(slug))
+    function loadCourse(track, key) {
+      plotSlugRef.current = key;
+      // hold the picture until the new course arrives — never a new race
+      // drawn on the last one's road
+      plotRef.current = null;
+      trackRef.current = layout(window.innerWidth, window.innerHeight);
+      // a map course (Stage 9) is this race's own loop; a drawn one is shared
+      const url =
+        track.indexOf("map:") === 0
+          ? "api/?action=course&" +
+            (props.roomId
+              ? "room=" + encodeURIComponent(props.roomId)
+              : "practice=" + encodeURIComponent(idRef.current))
+          : "api/?action=track&slug=" + encodeURIComponent(track);
+      fetch(url, { cache: "no-store" })
         .then(function (res) {
-          if (!res.ok) throw new Error("track " + res.status);
+          if (!res.ok) throw new Error("course " + res.status);
           return res.json();
         })
         .then(function (plot) {
-          if (!aliveRef.current || plotSlugRef.current !== slug) return;
+          if (!aliveRef.current || plotSlugRef.current !== key) return;
           plotRef.current = plot;
           trackRef.current = layout(window.innerWidth, window.innerHeight);
         })
         .catch(function () {
-          if (plotSlugRef.current === slug) plotSlugRef.current = "";
+          if (plotSlugRef.current === key) plotSlugRef.current = "";
         });
     }
 

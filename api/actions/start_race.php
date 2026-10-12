@@ -87,23 +87,18 @@ function action_start_race(): void
                 $doc['participants'][$i]['prediction'] = $laneMap[$pick] ?? null;
             }
         }
+        $seed = RaceEngine::prngNew();
         $opts = [];
         if ($custom) {
-            $plot = Tracks::load((string) ($doc['config']['track'] ?? ''));
-            if ($plot === null) {
+            // horses null = Random, drawn from the seed; a map course's loop
+            // is picked from the same seed (Stage 9)
+            $opts = Tracks::raceOptions((string) ($doc['config']['track'] ?? ''), (int) ($doc['config']['laps'] ?? 1), $riderHorses, $seed);
+            if ($opts === null) {
                 $err = ['status' => 404, 'code' => 'track_not_found', 'message' => 'The course hath vanished from the scrolls.'];
                 return null;
             }
-            $opts = [
-                'mode' => 'custom',
-                'horses' => $riderHorses, // null = Random, drawn from the seed
-                'track' => $plot['slug'],
-                'laps' => (int) ($doc['config']['laps'] ?? 1),
-                'segments' => $plot['segments'],
-            ];
             unset($doc['trumpetAt']);
         }
-        $seed = RaceEngine::prngNew();
         $race = RaceEngine::create($seed, count($riders), $opts);
         $race['seed'] = base64_encode(pack('N', $seed));
         $race['startedAt'] = microtime(true);

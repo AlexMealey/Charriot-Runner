@@ -89,7 +89,7 @@ function Landing(props) {
             <input
               type="range"
               min="1"
-              max="3"
+              max="20"
               value={laps}
               onChange={function (e) {
                 setLaps(parseInt(e.target.value, 10));

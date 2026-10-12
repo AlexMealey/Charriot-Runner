@@ -284,7 +284,8 @@ class RaceEngine
             'horses' => $horses,
             'track' => (string) ($opts['track'] ?? ''),
             'laps' => max(1, (int) ($opts['laps'] ?? 1)),
-            'course' => ['segments' => $opts['segments'] ?? []],
+            // a map course (Stage 9) arrives whole — loop, pace and all
+            'course' => $opts['course'] ?? ['segments' => $opts['segments'] ?? []],
         ];
     }
 
@@ -302,6 +303,10 @@ class RaceEngine
         $state['t'] += self::STEP;
         $laps = (int) $state['laps'];
         $segments = $state['course']['segments'];
+        // laps per second of a steady canter: a map course sets its own
+        // (a longer loop or a bigger map is a longer race), others ride at
+        // BASE_SPEED as always
+        $base = (float) ($state['course']['baseSpeed'] ?? self::BASE_SPEED);
         $finishers = [];
         for ($i = 0, $n = count($state['racers']); $i < $n; $i++) {
             $rc = &$state['racers'][$i];
@@ -328,9 +333,9 @@ class RaceEngine
             }
             $surge = $rc['surgeAmp'] * sin($rc['surgePhase'] + $state['t'] * $rc['surgeW']);
             $jitter = (self::prngNext($state['prng']) - 0.5) * 0.05;
-            $v = self::BASE_SPEED * $speed * (1 + 0.5 * $surge + $jitter);
+            $v = $base * $speed * (1 + 0.5 * $surge + $jitter);
             $before = $rc['p'];
-            $rc['p'] += max(0.03, $v) * self::STEP / $laps;
+            $rc['p'] += max(0.25 * $base, $v) * self::STEP / $laps; // never below a quarter pace
             if ($rc['p'] >= 1) {
                 $rc['done'] = true;
                 // how far into this tick the line was crossed: earlier wins
