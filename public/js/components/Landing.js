@@ -9,6 +9,9 @@ function Landing(props) {
   const [code, setCode] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
+  // Souls who may enter: never fewer than the chariots, never past the
+  // sixteen the server allows (a typed 99 is only a wish).
+  const seats = Math.min(16, Math.max(racers, souls));
 
   function enterKey(fn) {
     return function (e) {
@@ -28,7 +31,7 @@ function Landing(props) {
     setNotice("");
     api("create_room", {
       maxRacers: racers,
-      maxJoiners: Math.max(racers, souls),
+      maxJoiners: seats,
     })
       .then(function (data) {
         setBusy(false);
@@ -92,7 +95,7 @@ function Landing(props) {
         <div className="field">
           <div className="rowline">
             <label>Souls who may enter</label>
-            <span className="tally">{Math.max(racers, souls)}</span>
+            <span className="tally">{seats}</span>
           </div>
           <input
             type="number"

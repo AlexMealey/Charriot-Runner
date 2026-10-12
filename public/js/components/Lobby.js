@@ -8,6 +8,8 @@ function Lobby(props) {
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
   const [snap, setSnap] = useState(props.session.snapshot);
+  // The room vanished under us (404): the dust scroll stands in (spec §6).
+  const [lost, setLost] = useState(false);
   const isHost = !!localStorage.getItem("chariot.host." + props.roomId);
   const url = window.location.origin + "/?room=" + props.roomId;
   // Thine own wager as the roster poll last carried it (4.7): the radio
@@ -45,11 +47,20 @@ function Lobby(props) {
       encodeURIComponent(props.roomId) +
       "&token=" +
       encodeURIComponent(props.session.token);
-    return poll(q, 250, setSnap);
+    return poll(q, 250, setSnap, function () {
+      setLost(true);
+    });
   }, [snap.status]);
 
+  /* Quitting the lobby frees the seat (3.5); the kept identity lets the
+   * same soul re-attach later (4.9). Fire and forget — the gates open
+   * whether or not the herald hears. */
   function home(e) {
     e.preventDefault();
+    api("leave_room", {
+      roomId: props.roomId,
+      token: props.session.token,
+    }).catch(function () {});
     props.navigate("/");
   }
 
@@ -121,6 +132,8 @@ function Lobby(props) {
       setNotice(err.message);
     });
   }
+
+  if (lost) return <DustScroll navigate={props.navigate} />;
 
   // Racing elsewhere (or already run): this lobby is over — hand over to
   // the shared race view.

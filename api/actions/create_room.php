@@ -7,11 +7,14 @@ function action_create_room(): void
     $body = Http::body();
     $maxRacers = $body['maxRacers'] ?? null;
     $maxJoiners = $body['maxJoiners'] ?? null;
+    // Max joiners counts racers + spectators (spec §2), so never fewer
+    // than the racers it must seat.
     if (
         !is_int($maxRacers) || $maxRacers < 2 || $maxRacers > 8 ||
-        !is_int($maxJoiners) || $maxJoiners < 2 || $maxJoiners > 16
+        !is_int($maxJoiners) || $maxJoiners < 2 || $maxJoiners > 16 ||
+        $maxJoiners < $maxRacers
     ) {
-        Http::error(400, 'bad_request', 'maxRacers must be 2..8 and maxJoiners 2..16');
+        Http::error(400, 'bad_request', 'Chariots number 2 to 8 and souls 2 to 16 — never fewer souls than chariots.');
         return;
     }
     $room = RoomStore::createRoom(['maxRacers' => $maxRacers, 'maxJoiners' => $maxJoiners]);

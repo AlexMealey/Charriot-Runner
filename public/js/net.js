@@ -38,13 +38,23 @@ function waver(ok) {
 
 /* Tiny shared short-poller: fetch `url` every `intervalMs`, hand the
  * decoded JSON to `onData`, and stop (returned) on unmount — the same
- * shape as the Stage 1 practice polling. Non-OK answers are skipped. */
-function poll(url, intervalMs, onData) {
+ * shape as the Stage 1 practice polling. A 404 means the scroll is gone:
+ * given `onGone`, the poller calls it once and falls silent. Other non-OK
+ * answers are skipped. */
+function poll(url, intervalMs, onData, onGone) {
   let alive = true;
   let timer = 0;
   function tick() {
     fetch(url, { cache: "no-store" })
       .then(function (res) {
+        if (res.status === 404 && onGone) {
+          if (alive) {
+            alive = false;
+            waver(true); // the link itself answered
+            onGone();
+          }
+          return null;
+        }
         return res.ok ? res.json() : null;
       })
       .then(function (data) {
