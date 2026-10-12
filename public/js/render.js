@@ -208,30 +208,50 @@ function drawCourse(ctx, w, tr, state, T) {
   if (tr.map && tr.map.img.complete && tr.map.img.naturalWidth) {
     ctx.drawImage(tr.map.img, tr.map.x, tr.map.y, tr.map.w, tr.map.h);
   }
-  const pts = tr.pts;
-  const line = new Path2D();
-  line.moveTo(pts[0].x, pts[0].y);
-  for (let i = 1; i < pts.length; i++) line.lineTo(pts[i].x, pts[i].y);
-  if (tr.loop) line.closePath();
-  ctx.save();
-  ctx.lineJoin = "round";
-  ctx.lineCap = "round";
-  // on a map the loop is a highlighted band over the road; elsewhere the
-  // stone-edged bed of a drawn course
-  ctx.strokeStyle = tr.map ? "rgba(0, 0, 0, 0.55)" : T.trackEdge;
-  ctx.lineWidth = tr.laneW * 2 + (tr.map ? 4 : 10);
-  ctx.stroke(line);
-  ctx.strokeStyle = tr.map ? "rgba(233, 200, 119, 0.5)" : T.track;
-  ctx.lineWidth = tr.laneW * 2;
-  ctx.stroke(line);
-  ctx.strokeStyle = tr.map ? "rgba(20, 16, 12, 0.55)" : T.laneLine;
-  ctx.lineWidth = 1.5;
-  ctx.setLineDash([8, 6]);
-  ctx.stroke(line);
-  ctx.restore();
+  // where every horse rides: its lap, that lap's loop (each lap may have
+  // its own), and how far round — p is the race in lap times
+  const laps = state.laps || 1;
+  const times =
+    tr.lapTimes && tr.lapTimes.length === laps ? tr.lapTimes : new Array(laps).fill(1);
+  const total = times.reduce(function (a, b) {
+    return a + b;
+  }, 0);
+  let leadT = -1;
+  let leadLap = 0;
+  let leadLoop = tr.perLap ? Math.min(laps, tr.loops.length) - 1 : 0;
+  const placed = state.racers.map(function (rc) {
+    const t = Math.min(rc.p, 1) * total;
+    const at = lapAt(times, t);
+    const li = tr.perLap ? Math.min(at.lap, tr.loops.length - 1) : 0;
+    if (!rc.done && t > leadT) {
+      leadT = t;
+      leadLap = at.lap;
+      leadLoop = li;
+    }
+    // the start grid closes up over the opening straight
+    const back =
+      at.lap === 0
+        ? Math.floor(rc.lane / 2) * tr.gridGap * Math.max(0, 1 - at.u / tr.closeLaps)
+        : 0;
+    const side = rc.side === undefined ? rc.lane % 2 : rc.side;
+    return { rc: rc, li: li, pose: coursePose(tr.loops[li], at.u - back, (side - 0.5) * tr.laneW) };
+  });
+
+  // the loops ridden right now — the leader's brightest, drawn last
+  const used = [];
+  placed.forEach(function (it) {
+    if (!it.rc.done && used.indexOf(it.li) < 0) used.push(it.li);
+  });
+  if (used.indexOf(leadLoop) < 0) used.push(leadLoop);
+  used.sort(function (a, b) {
+    return (a === leadLoop ? 1 : 0) - (b === leadLoop ? 1 : 0);
+  });
+  used.forEach(function (li) {
+    drawCourseBed(ctx, tr, tr.loops[li], T, li === leadLoop ? 1 : 0.4);
+  });
 
   // checkered start/finish strip (parchment & blood) across both lanes
-  const start = coursePose(tr, 0, 0);
+  const start = coursePose(tr.loops[0], 0, 0);
   const cell = 5;
   ctx.save();
   ctx.translate(start.x, start.y);
@@ -245,15 +265,6 @@ function drawCourse(ctx, w, tr, state, T) {
   ctx.restore();
 
   // horses, back to front so the nearer ones stand over the farther
-  const laps = state.laps || 1;
-  let lead = 0;
-  const placed = state.racers.map(function (rc) {
-    const d = rc.p * laps;
-    if (!rc.done) lead = Math.max(lead, d);
-    const back = Math.floor(rc.lane / 2) * tr.gridGap * Math.max(0, 1 - d / tr.closeLaps);
-    const side = rc.side === undefined ? rc.lane % 2 : rc.side;
-    return { rc: rc, pose: coursePose(tr, d - back, (side - 0.5) * tr.laneW) };
-  });
   placed.sort(function (a, b) {
     return a.pose.y - b.pose.y;
   });
@@ -274,8 +285,34 @@ function drawCourse(ctx, w, tr, state, T) {
     ctx.fillStyle = T.goldBright;
     ctx.font = "700 15px Cinzel, Georgia, serif";
     ctx.textAlign = "center";
-    ctx.fillText("Lap " + Math.min(laps, Math.floor(lead) + 1) + " of " + laps, w / 2, 100);
+    ctx.fillText("Lap " + (leadLap + 1) + " of " + laps, w / 2, 100);
   }
+}
+
+/* One loop's bed: on a map a highlighted band over the road, elsewhere the
+ * stone-edged bed of a drawn course — dimmed (`alpha`) for a loop that is
+ * not the leader's (each lap its own loop). */
+function drawCourseBed(ctx, tr, loop, T, alpha) {
+  const pts = loop.pts;
+  const line = new Path2D();
+  line.moveTo(pts[0].x, pts[0].y);
+  for (let i = 1; i < pts.length; i++) line.lineTo(pts[i].x, pts[i].y);
+  if (loop.loop) line.closePath();
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.lineJoin = "round";
+  ctx.lineCap = "round";
+  ctx.strokeStyle = tr.map ? "rgba(0, 0, 0, 0.55)" : T.trackEdge;
+  ctx.lineWidth = tr.laneW * 2 + (tr.map ? 4 : 10);
+  ctx.stroke(line);
+  ctx.strokeStyle = tr.map ? "rgba(233, 200, 119, 0.5)" : T.track;
+  ctx.lineWidth = tr.laneW * 2;
+  ctx.stroke(line);
+  ctx.strokeStyle = tr.map ? "rgba(20, 16, 12, 0.55)" : T.laneLine;
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([8, 6]);
+  ctx.stroke(line);
+  ctx.restore();
 }
 
 /* The legend for a horses race: each rider's horse in their colour and

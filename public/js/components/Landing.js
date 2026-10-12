@@ -17,6 +17,8 @@ function Landing(props) {
   const [mode, setMode] = useState("classic");
   const [track, setTrack] = useState("hippodrome");
   const [laps, setLaps] = useState(1);
+  // a map course may ride a new loop every lap (Stage 9)
+  const [perLap, setPerLap] = useState(false);
   const [tracks, setTracks] = useState([]);
   useEffect(function () {
     let alive = true;
@@ -38,12 +40,35 @@ function Landing(props) {
     return t.slug === track;
   });
 
+  const onMap = !!course && (course.kind === "map" || course.kind === "any");
+
   // What every create call adds for the chosen rules.
   function setup() {
+    const lapCount = course && !course.loop ? 1 : laps;
     return mode === "custom"
-      ? { mode: "custom", track: track, laps: course && !course.loop ? 1 : laps }
+      ? { mode: "custom", track: track, laps: lapCount, perLap: onMap && lapCount > 1 && perLap }
       : { mode: "classic" };
   }
+
+  // Each lap's road on a map course, as the drop-down shows it.
+  const EACH_LAP = [
+    {
+      value: false,
+      face: (
+        <DropdownFace icon={<CourseIcon />} name="The same road every lap">
+          <span className="dd-note">one loop, ridden lap after lap</span>
+        </DropdownFace>
+      ),
+    },
+    {
+      value: true,
+      face: (
+        <DropdownFace icon={<GlyphIcon>⚄</GlyphIcon>} name="A new road every lap">
+          <span className="dd-note">every lap its own loop, all through one start</span>
+        </DropdownFace>
+      ),
+    },
+  ];
 
   // The rules, as the themed drop-down shows them.
   const RULES = [
@@ -134,6 +159,18 @@ function Landing(props) {
               onChange={function (e) {
                 setLaps(parseInt(e.target.value, 10));
               }}
+            />
+          </div>
+        ) : null}
+        {mode === "custom" && onMap && laps > 1 ? (
+          <div className="field">
+            <label>Each lap</label>
+            <Dropdown
+              id={panel + "-perlap"}
+              label="Each lap"
+              options={EACH_LAP}
+              value={perLap}
+              onChange={setPerLap}
             />
           </div>
         ) : null}

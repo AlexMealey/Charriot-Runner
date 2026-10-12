@@ -121,6 +121,10 @@ docker compose cp web:/var/www/html/data ./data-backup     # copy everything out
   Share the link. Everyone picks a name (the dice rolls one) and lands in
   the lobby. Riders beyond the chariot count become onlookers. Everyone can
   back a winner.
+- **Map courses**: every race sweeps a loop through most of the map's
+  roads (at least 75 % of its longest loop). With more than one lap, *Each
+  lap* chooses the same road every lap, or a new road every lap — all
+  through one starting junction.
 - **Horses lobby**: each rider picks *Thy steed* (or leaves it on Random)
   and clicks **Make ready**. When the host sounds the trumpet before
   everyone is ready, the riders get 30 s to make ready; after that the host
@@ -195,10 +199,13 @@ so a longer loop — or a bigger map — makes a longer race.
    { "name": "Emerald River", "size": "small" }
    ```
 
-   `size` sets the race length: `small` ≈ 40 s to the winner over a typical
-   loop, `medium` ≈ 80 s, `large` ≈ 2 min (per lap). For exact control,
-   `"secondsAcross"` is the seconds a canter takes to cross the map's
-   width. If a map's roads come out wrong, tune `greyMin` / `greyMax`
+   `size` sets how long each lap takes: `small` 15–25 s, `medium`
+   40–60 s, `large` 70–90 s. A loop of the shortest allowed length (75 %
+   of the map's longest loop) takes the least, the longest loop the most;
+   horses keep a steady pace round each loop, and lap times round up to
+   the next 5 s. For exact control, `"lapRange": [least, most]` sets a
+   map's own range in seconds. If a map's roads come out wrong, tune
+   `greyMin` / `greyMax`
    (the roads' raw grey, ignoring transparency; default 98–140) and
    `opacityMin` (how opaque road ink must be, 0–255; default 80). Maps
    differ: Thermopylae's roads sit at 100–150, Khamsin's at 88–118 — the
@@ -229,8 +236,10 @@ changing any of them.
 | Race view poll rate | `POLL_MS` in `public/js/components/RaceView.js` | 500 ms |
 | Slowest poll in a hidden tab | `pollDelay` in `public/js/net.js` | 1 s |
 | Horse stats and speed table | `HORSES` / `SPEED` in `api/lib/RaceEngine.php` | see above |
-| A map's race length | `size` / `secondsAcross` in `public/maps/<slug>.json` (re-extract after) | per map |
-| Map loop lengths | `MIN_LOOP` / `MAX_LOOP` in `api/lib/Maps.php` | 1.2–3 map widths |
+| A map's lap time | `size` / `lapRange` in `public/maps/<slug>.json` (re-extract after) | per map |
+| Lap ranges by size | `SIZES` in `api/lib/Maps.php` | 15–25 / 40–60 / 70–90 s |
+| How much of a map a loop sweeps | `COVER` in `api/lib/Maps.php` (share of the map's longest loop) | 75 % |
+| Lap-time rounding | `LAP_ROUND` in `api/lib/Maps.php` | up to the next 5 s |
 | Chariots and seats per room | checks in `api/actions/create_room.php` | 2–8 and 2–16 |
 
 ## Troubleshooting

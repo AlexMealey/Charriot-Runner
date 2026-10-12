@@ -19,9 +19,11 @@ declare(strict_types=1);
  * file beside the room), so a race replays the same and later map edits
  * cannot touch it; every rematch rides somewhere new.
  *
- * Pace: crossing the map's width at a canter takes its size's seconds
- * (sidecar "size" or "secondsAcross"); laps run PACE times faster than
- * that, each lap's time rounded up to whole LAP_ROUND seconds.
+ * Pace: a map's size gives every lap a time range (SIZES, or the
+ * sidecar's own "lapRange"). A loop of just COVER of the longest takes the
+ * range's least, the longest loop its most, loops between in proportion;
+ * horses keep a steady pace round each loop, and each lap's time rounds up
+ * to the next LAP_ROUND seconds.
  */
 final class Maps
 {
@@ -36,12 +38,10 @@ final class Maps
     private const HAIRPIN = 150.0;
     /** Bends tighter than this share of the map's width count as turns. */
     private const TURN_RADIUS = 0.1;
-    /** Laps run this much faster than a canter at the map's size … */
-    private const PACE = 1.4;
-    /** … and each lap's time rounds up to a whole number of these seconds. */
-    private const LAP_ROUND = 10;
-    /** Seconds to cross the map's width at a canter, by map size. */
-    public const SIZES = ['small' => 19.0, 'medium' => 38.0, 'large' => 57.0];
+    /** Each lap's time rounds up to a whole multiple of these seconds. */
+    private const LAP_ROUND = 5;
+    /** A lap's time range in seconds, [shortest loop, longest loop], by map size. */
+    public const SIZES = ['small' => [15, 25], 'medium' => [40, 60], 'large' => [70, 90]];
 
     /** @var array<string, ?array> graphs already read this request */
     private static array $cache = [];
@@ -55,8 +55,8 @@ final class Maps
     /**
      * Every map course: [{slug: "map:<slug>", name, loop, kind: "map",
      * image, size}], plus "map:*" (kind "any") when there are two or more.
-     * `size` is the sidecar's small/medium/large, or "custom" for an exact
-     * secondsAcross.
+     * `size` is the sidecar's small/medium/large, or "custom" for its own
+     * lapRange.
      */
     public static function all(): array
     {
@@ -64,7 +64,7 @@ final class Maps
         foreach (glob(self::dir() . '/*.json') ?: [] as $file) {
             $g = self::graph(basename($file, '.json'));
             if ($g !== null) {
-                $size = array_search((float) ($g['secondsAcross'] ?? self::SIZES['medium']), self::SIZES, true);
+                $size = array_search(self::lapRange($g), self::SIZES, true);
                 $out[] = [
                     'slug' => 'map:' . $g['slug'],
                     'name' => $g['name'],
@@ -89,7 +89,7 @@ final class Maps
     }
 
     /**
-     * A map's road graph {slug, name, image, width, height, secondsAcross,
+     * A map's road graph {slug, name, image, width, height, lapRange,
      * maxLoop, nodes, edges}, or null. A graph written before `maxLoop`
      * existed gets it estimated here (more slowly than the extractor).
      */
@@ -386,9 +386,11 @@ final class Maps
         $pts[] = $pts[0];
         $plot = Tracks::plot($pts, true, $opt);
         $client = Tracks::clientPlot(['loop' => true] + $plot);
-        // a canter across the map takes secondsAcross; laps run PACE faster,
-        // each rounded up to whole LAP_ROUND seconds
-        $raw = $plot['length'] / $W * (float) ($g['secondsAcross'] ?? self::SIZES['medium']) / self::PACE;
+        // the lap's time from the map's range: a loop of COVER of the longest
+        // takes its least, the longest its most; rounded up to LAP_ROUND
+        [$least, $most] = self::lapRange($g);
+        $share = self::length($g['edges'], $loop) / (float) $g['maxLoop'];
+        $raw = $least + max(0.0, min(1.0, ($share - self::COVER) / (1 - self::COVER))) * ($most - $least);
         return [
             'points' => $client['points'],
             'segments' => $plot['segments'],
@@ -396,6 +398,13 @@ final class Maps
             'lapSeconds' => (int) max(self::LAP_ROUND, ceil($raw / self::LAP_ROUND) * self::LAP_ROUND),
             'at' => $first,
         ];
+    }
+
+    /** A map's lap-time range [least, most] in seconds: its own, or its size's. */
+    private static function lapRange(array $g): array
+    {
+        $range = $g['lapRange'] ?? self::SIZES[$g['size'] ?? 'medium'] ?? self::SIZES['medium'];
+        return [(int) $range[0], (int) $range[1]];
     }
 
     /** Edge lists as junction → [[edge, leaving forward?], …]. */

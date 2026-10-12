@@ -10,7 +10,7 @@ declare(strict_types=1);
  *   docker compose exec -T web php api/tools/extract_roads.php <slug> --preview > roads.png
  *
  * Reads maps/<slug>.avif, .webp or .png from the docroot — public/maps/ in the
- * repo — and its sidecar maps/<slug>.json ({name, size, secondsAcross,
+ * repo — and its sidecar maps/<slug>.json ({name, size, lapRange,
  * greyMin, greyMax, opacityMin}), finds the roads — light ink that is
  * fairly opaque — and
  * prints their graph of junctions and roads as JSON, or with --preview a
@@ -64,8 +64,8 @@ if (!function_exists($reader)) {
 $side = is_file("$dir/$slug.json") ? (json_decode((string) file_get_contents("$dir/$slug.json"), true) ?: []) : [];
 $P = $side + [
     'name' => ucwords(str_replace('_', ' ', $slug)),
-    // how big the map rides: small ≈ 40 s to the winner over a typical loop,
-    // large ≈ 2 min; secondsAcross (a canter across the map's width) wins
+    // how long a lap rides: small 15–25 s, medium 40–60 s, large 70–90 s
+    // (Maps::SIZES); a sidecar "lapRange": [least, most] sets its own
     'size' => 'medium',
     'greyMin' => 98,     // raw (alpha-free) grey of the roads …
     'greyMax' => 140,
@@ -490,14 +490,14 @@ foreach ($E as $e) {
 }
 ksort($used);
 $remap = array_flip(array_keys($used));
-$sizes = ['small' => 19.0, 'medium' => 38.0, 'large' => 57.0]; // as Maps::SIZES
+$range = $P['lapRange'] ?? Maps::SIZES[$P['size']] ?? Maps::SIZES['medium'];
 $out = [
     'slug' => $slug,
     'name' => (string) $P['name'],
     'image' => 'maps/' . basename($file),
     'width' => $W,
     'height' => $H,
-    'secondsAcross' => (float) ($P['secondsAcross'] ?? $sizes[$P['size']] ?? $sizes['medium']),
+    'lapRange' => [(int) $range[0], (int) $range[1]],
     'nodes' => array_map(fn (int $n): array => [round($nodes[$n][0], 1), round($nodes[$n][1], 1)], array_keys($used)),
     'edges' => [],
 ];

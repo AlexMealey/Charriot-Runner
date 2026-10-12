@@ -108,10 +108,17 @@ function buildCourse(w, h, plot) {
   const scale = Math.min(availW / vb[2], availH / vb[3]);
   const ox = side + (availW - vb[2] * scale) / 2 - vb[0] * scale;
   const oy = top + (availH - vb[3] * scale) / 2 - vb[1] * scale;
-  const pts = [];
-  for (let i = 0; i + 1 < plot.points.length; i += 2) {
-    pts.push({ x: ox + plot.points[i] * scale, y: oy + plot.points[i + 1] * scale });
-  }
+  // a map course (Stage 9) carries its loops — one, or one per lap; a
+  // drawn course is a single loop of points
+  const sources = plot.loops || [{ points: plot.points, segments: plot.segments }];
+  const loops = sources.map(function (src) {
+    const pts = [];
+    for (let i = 0; i + 1 < src.points.length; i += 2) {
+      pts.push({ x: ox + src.points[i] * scale, y: oy + src.points[i + 1] * scale });
+    }
+    return { pts: pts, loop: !!plot.loop };
+  });
+  const pts = loops[0].pts;
   let lapPx = 0;
   for (let i = 1; i < pts.length; i++) {
     lapPx += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
@@ -128,7 +135,7 @@ function buildCourse(w, h, plot) {
   const horseH = isMap
     ? Math.max(18, Math.min(28, laneW * 2.2))
     : Math.max(18, Math.min(32, laneW * 1.25));
-  const first = plot.segments && plot.segments[0];
+  const first = sources[0].segments && sources[0].segments[0];
   return {
     course: true,
     map: isMap
@@ -140,8 +147,13 @@ function buildCourse(w, h, plot) {
           h: vb[3] * scale,
         }
       : null,
+    loops: loops,
     pts: pts,
     loop: !!plot.loop,
+    // seconds per lap at a canter (map courses), and whether each lap has
+    // a loop of its own; drawn courses' laps are all alike
+    lapTimes: plot.lapTimes || null,
+    perLap: !!plot.perLap,
     laneW: laneW,
     horseH: horseH,
     // the start grid (drawn only): each row 1.2 horse widths further back,
@@ -149,6 +161,19 @@ function buildCourse(w, h, plot) {
     gridGap: (1.2 * horseH * 0.6) / Math.max(1, lapPx),
     closeLaps: first && first.kind === "straight" ? first.to : 0.15,
   };
+}
+
+/* Which lap a horse is on, and how far round it (0..1), for `t` of the
+ * race's lap times — laps of different lengths when each has its own loop. */
+function lapAt(times, t) {
+  const last = times.length - 1;
+  for (let k = 0; k <= last; k++) {
+    if (t < times[k] || k === last) {
+      return { lap: k, u: Math.max(0, Math.min(1, t / times[k])) };
+    }
+    t -= times[k];
+  }
+  return { lap: 0, u: 0 };
 }
 
 /* Where a horse `d` laps into the race stands (d may run past one lap or

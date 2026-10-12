@@ -215,8 +215,11 @@ two-lane course).
 
 Note (Stage 9 — map courses): `track` may also be `map:<slug>` (or
 `map:*`, any map) — every race then rides a fresh loop through that map's
-roads, picked from the race seed and frozen into `race.course` (points,
-straight/turn table, map image and viewBox, `baseSpeed`). `tracks` lists
+roads (at least 75 % of its longest loop), grown from the race seed;
+`perLap: true` (2+ laps) gives every lap a loop of its own through one
+start. `race.course` keeps what the sim needs (lap times, each loop's
+straight/turn table); the loops' points sit beside the race in
+`course-<raceNo>.json`. `tracks` lists
 the maps; the new GET `course` (`room` or `practice`) returns the current
 race's loop (404 `course_not_found`), and a horses race block's
 `courseKey` changes with every race so clients refetch it.
