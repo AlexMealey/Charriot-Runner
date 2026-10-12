@@ -18,7 +18,11 @@ function action_create_room(): void
         return;
     }
     $room = RoomStore::createRoom(['maxRacers' => $maxRacers, 'maxJoiners' => $maxJoiners]);
-    RoomStore::saveRoom($room);
+    if (!RoomStore::saveRoom($room)) {
+        // never hand out a room that was not written (code review M1)
+        Http::error(500, 'storage_error', 'The scroll would not unroll.');
+        return;
+    }
     $scheme = !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ? 'https' : 'http';
     $origin = $scheme . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost');
     echo json_encode([

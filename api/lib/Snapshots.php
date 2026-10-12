@@ -88,6 +88,8 @@ function roomSnapshot(array $room): array
     return [
         'id' => $room['id'],
         'status' => $room['status'],
+        // §5's top-level tick: the race's, null before the first start
+        'tick' => $room['race']['tick'] ?? null,
         'config' => $room['config'],
         'participants' => $participants,
         'raceNo' => $room['raceNo'],

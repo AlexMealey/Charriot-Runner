@@ -3,7 +3,9 @@
 declare(strict_types=1);
 
 /**
- * JSON API front controller: headers, CORS preflight and action dispatch.
+ * JSON API front controller: headers and action dispatch. Same-origin only
+ * — the SPA is served by this very container, so no CORS headers (code
+ * review minor: CORS).
  *
  * Each action handler lives in its own file under actions/ and answers
  * directly with JSON; shared server code lives in lib/ (RaceEngine sim,
@@ -30,14 +32,6 @@ require __DIR__ . '/actions/create_practice.php';
 require __DIR__ . '/actions/practice_state.php';
 
 header('Content-Type: application/json; charset=utf-8');
-header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type');
-
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
-    http_response_code(204);
-    exit;
-}
 
 $action = $_GET['action'] ?? 'hello';
 
@@ -59,8 +53,9 @@ $handlers = [
 
 $handler = is_string($action) ? ($handlers[$action] ?? null) : null;
 if ($handler === null) {
-    http_response_code(404);
-    echo json_encode(['error' => 'Unknown action: ' . $action]);
+    // spec §5 envelope like every other error (code review M5); the raw
+    // action is never echoed — it may not even be a string
+    Http::error(404, 'unknown_action', 'The sages know no such action.');
     exit;
 }
 

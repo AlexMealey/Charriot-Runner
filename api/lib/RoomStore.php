@@ -16,22 +16,27 @@ declare(strict_types=1);
  */
 class RoomStore
 {
-    /** Write a document atomically. */
-    public static function put(string $kind, string $id, array $doc): void
+    /**
+     * Write a document atomically. False when nothing was stored (bad id,
+     * no lock, failed write) — callers answer 500 rather than hand out an
+     * id that was never persisted (code review M1).
+     */
+    public static function put(string $kind, string $id, array $doc): bool
     {
-        if (!self::validId($id)) {
-            return;
+        if (!self::validId($kind, $id)) {
+            return false;
         }
         $dest = self::root() . '/' . $kind . '/' . $id . '.json';
         self::ensureDir(dirname($dest));
 
         $lock = @fopen($dest . '.lock', 'c');
         if ($lock === false || !flock($lock, LOCK_EX)) {
-            return;
+            return false;
         }
-        self::writeDoc($dest, $doc);
+        $ok = self::writeDoc($dest, $doc);
         flock($lock, LOCK_UN);
         fclose($lock);
+        return $ok;
     }
 
     /**
@@ -40,12 +45,14 @@ class RoomStore
      * share the sidecar lock, so concurrent polls can neither interleave
      * tick lines nor lose each other's steps (code review C1). Returns the
      * persisted document, or null when the id is unknown, the file is
-     * unreadable, or the lock cannot be taken. Never calls put() — a second
-     * handle on the same sidecar would deadlock against our own lock.
+     * unreadable, the lock cannot be taken, or the write fails (code review
+     * M1: no caller reports a change that never landed). Never calls put()
+     * — a second handle on the same sidecar would deadlock against our own
+     * lock.
      */
     public static function mutate(string $kind, string $id, callable $fn): ?array
     {
-        if (!self::validId($id)) {
+        if (!self::validId($kind, $id)) {
             return null;
         }
         $dest = self::root() . '/' . $kind . '/' . $id . '.json';
@@ -62,8 +69,7 @@ class RoomStore
         $out = null;
         if (is_array($doc)) {
             $changed = $fn($doc);
-            if (is_array($changed)) {
-                self::writeDoc($dest, $changed);
+            if (is_array($changed) && self::writeDoc($dest, $changed)) {
                 $out = $changed;
             }
         }
@@ -75,7 +81,7 @@ class RoomStore
     /** Read a document; null when missing or unreadable. */
     public static function get(string $kind, string $id): ?array
     {
-        if (!self::validId($id)) {
+        if (!self::validId($kind, $id)) {
             return null;
         }
         $path = self::root() . '/' . $kind . '/' . $id . '.json';
@@ -89,7 +95,7 @@ class RoomStore
     /** Append tick lines (one JSON string per line) to a race's history. */
     public static function appendTicks(string $kind, string $id, int $raceNo, array $lines): void
     {
-        if ($lines === [] || !self::validId($id)) {
+        if ($lines === [] || !self::validId($kind, $id)) {
             return;
         }
         $dir = self::root() . '/' . $kind . '/' . $id;
@@ -128,25 +134,28 @@ class RoomStore
         return self::get('rooms', $id);
     }
 
-    /** Persist a room document (atomic, see put()). */
-    public static function saveRoom(array $doc): void
+    /** Persist a room document (atomic, see put()); false when not stored. */
+    public static function saveRoom(array $doc): bool
     {
-        self::put('rooms', $doc['id'], $doc);
+        return self::put('rooms', $doc['id'], $doc);
     }
 
-    /** Temp-file-then-rename swap; the caller holds the sidecar lock. */
-    private static function writeDoc(string $dest, array $doc): void
+    /**
+     * Temp-file-then-rename swap; the caller holds the sidecar lock. False
+     * when the previous file was kept (unencodable doc or failed write).
+     */
+    private static function writeDoc(string $dest, array $doc): bool
     {
         $json = json_encode($doc, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
         if ($json === false) {
-            return; // keep the previous file rather than store garbage
+            return false; // keep the previous file rather than store garbage
         }
         $tmp = $dest . '.tmp-' . bin2hex(random_bytes(6));
-        if (@file_put_contents($tmp, $json) === strlen($json)) {
-            rename($tmp, $dest); // atomic swap: readers see old or new
-        } else {
-            @unlink($tmp);
+        if (@file_put_contents($tmp, $json) === strlen($json) && rename($tmp, $dest)) {
+            return true; // atomic swap: readers see old or new
         }
+        @unlink($tmp);
+        return false;
     }
 
     /** Root of the store, one level above api/. */
@@ -163,9 +172,14 @@ class RoomStore
         }
     }
 
-    /** Ids are hex (spec §2); anything else never touches the disk path. */
-    private static function validId(string $id): bool
+    /**
+     * Ids are lowercase hex of the length their kind is minted with —
+     * 32 for rooms (spec §2), 16 for practice (§3); anything else never
+     * touches the disk path (code review minor: validId length).
+     */
+    private static function validId(string $kind, string $id): bool
     {
-        return preg_match('/^[0-9a-f]+$/', $id) === 1;
+        $len = ['rooms' => 32, 'practice' => 16][$kind] ?? 0;
+        return $len > 0 && preg_match('/^[0-9a-f]{' . $len . '}$/', $id) === 1;
     }
 }

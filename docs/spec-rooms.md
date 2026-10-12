@@ -312,6 +312,12 @@ just as importantly, what not to.
 - **Everyone leaves**: room persists until TTL; sim keeps advancing only when
   polled (document: sim advances on *catch-up*, so a room nobody polls freezes
   at its last tick — acceptable, and it expires by TTL anyway).
+- **Joining during the results** (`status: "finished"`): the joiner takes a
+  free racer lane like a lobby join and rides in the host's next rematch
+  (deliberate — a rematch skips the lobby, so a spectator could never get a
+  chariot). The finished race is untouched: its nicknames and riders are
+  frozen at its start. Predictions stay sealed between races.
+  *(Code review M2, decided 2026-10-12.)*
 - **Two hosts double-click Start**: second call returns `409 already_racing`.
 - **Clock skew**: never used; `tick` is the only time axis.
 

@@ -1,7 +1,9 @@
 # Code review — findings vs. spec (2026-10-09)
 
-Status: **open — nothing fixed yet**; this is the review output, to be worked
-off stage by stage.
+Status: **closed (2026-10-12)** — every item fixed or decided; two minor
+notes stay deferred to Stage 7 as they always were. Resolutions in the
+work-off checklist at the end. Line numbers below refer to the
+pre-split `api/index.php` / `public/index.html` of 2026-10-09.
 Reviewed: `api/index.php`, `api/lib/RoomStore.php`, `api/lib/RaceEngine.php`
 (full), `public/index.html` (outline + code segments — see caveat), against
 `docs/spec-rooms.md` and `docs/stages/stage-1..5.md`.
@@ -123,12 +125,45 @@ spectators. Add the condition.
 
 ## Work-off checklist
 
-- [ ] C1 `RoomStore::mutate` lock across read-modify-write (+ `appendTicks`)
-- [ ] C2 Finish guard: stop catch-up/tick writes after the race ends
-- [ ] C3 `left: true` leave/rejoin (implement Stage 4.9 as written)
-- [ ] M1 `put`/`saveRoom` return success; 500 on required-write failure
-- [ ] M2 Join-after-finish role rule
-- [ ] M3/M4 Input validation (`create_practice`, `maxJoiners >= maxRacers`)
-- [ ] M5 Unknown-action error shape
-- [ ] Minor items decided in the relevant stage steps
-- [ ] Follow-up frontend pass (RaceView L427–600, JoinGate L904–1000)
+- [x] C1 `RoomStore::mutate` lock across read-modify-write (+ `appendTicks`)
+      — every room/practice write that reads first runs inside `mutate`:
+      `room_state`, `set_prediction`, `rematch`, `practice_state`,
+      `join_room`, `leave_room`, `start_race`. Only the two creators
+      (`create_room`, `create_practice`) use a plain `put` (new docs).
+- [x] C2 Finish guard: `RaceEngine::advance` stops at `finished >= n`;
+      the shared `catchUpRace()` feeds rooms and practice; `finishedAt`
+      stamped once.
+- [x] C3 `left: true` leave/rejoin (Stage 4.9); the lobby's Gates link
+      now calls `leave_room`, re-attach via the cached identity, and a
+      returning quitter needs a free seat.
+- [x] M1 `writeDoc`/`put`/`saveRoom` return `bool`; `mutate` returns
+      `null` when its write fails; `create_room`/`create_practice` answer
+      500 `storage_error` instead of handing out an unwritten id.
+- [x] M2 Decided: a join during results takes a racer lane and rides in
+      the rematch — recorded in spec §11. Safe because each race freezes
+      its `names`/`riders` at its start.
+- [x] M3 `create_practice` validates `racers` (int 2–8, absent → 4) and
+      answers 400 `bad_request` like `create_room`.
+- [x] M4 `create_room` rejects `maxJoiners < maxRacers` (400).
+- [x] M5 Unknown action → 404 `{"error": {"code": "unknown_action", …}}`
+      via `Http::error`; the raw action is no longer echoed.
+- [x] Minor items:
+  - [x] Snapshot gaps — `roomSnapshot` carries §5's top-level `tick`;
+        `history` stays server-only (contract-legal, Stage 5).
+  - [x] Placements leak — slim `{lane, place}` in every snapshot and
+        tick file, practice included.
+  - [x] Race state shape — decided in 4.1: client snapshots are a
+        projection; engine state (`prng`, `seed`, ranks, surges, frozen
+        `names`/`riders`) never leaves the server.
+  - [x] `finished` is a count — kept: documented in the §5 note (4.1)
+        and every client compares `finished >= n`.
+  - [x] CORS `*` — dropped from `api/index.php` and `docker/vhost.conf`
+        (same-origin app).
+  - [x] `validId` — 32-hex for `rooms`, 16-hex for `practice`.
+  - [ ] Mixed time formats — still deferred to Stage 7.1 (GC).
+  - [ ] Dead code — verified unreferenced (`mulberry32`, `seededRandom`,
+        `createRace`, `stepRace` in `public/js/random.js` /
+        `simulation.js`); removal stays with Stage 7.5.
+- [x] Follow-up frontend pass — `RaceView`, `JoinGate`, `Lobby`,
+      `ResultsCard`, `Landing` reviewed in full during the 2026-10-12
+      stage 1–5 reviews.
